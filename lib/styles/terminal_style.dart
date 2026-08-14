@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/habit_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/terminal_command_service.dart';
 import '../utils/app_fonts.dart';
@@ -28,14 +30,16 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
   final ScrollController _scrollController = ScrollController();
   final TerminalCommandService _commandService = TerminalCommandService();
 
+  static final List<TerminalOutput> _persistentHistory = [];
   List<AppInfo> _filteredApps = [];
-  List<TerminalOutput> _outputHistory = [];
   List<TerminalContact> _contactList = [];
   String _contactFilter = '';
   TerminalMode _mode = TerminalMode.normal;
   bool _processingCommand = false;
 
   late AnimationController _blinkController;
+
+  List<TerminalOutput> get _outputHistory => _persistentHistory;
 
   @override
   void initState() {
@@ -45,8 +49,9 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
 
-    _outputHistory = [];
-    _loadSystemInfo();
+    if (_persistentHistory.isEmpty) {
+      _loadSystemInfo();
+    }
   }
 
   Future<void> _loadSystemInfo() async {
@@ -54,7 +59,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       final sysOutput = await _commandService.executeSystemInfo();
       if (mounted) {
         setState(() {
-          _outputHistory.addAll(sysOutput);
+          _persistentHistory.addAll(sysOutput);
         });
         _scrollToBottom();
       }
@@ -197,19 +202,21 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
 
     if (trimmed.toLowerCase() == 'clear') {
       setState(() {
-        _outputHistory = [];
+        _persistentHistory.clear();
         _processingCommand = false;
       });
       return;
     }
 
+    final habitProvider = Provider.of<HabitProvider>(context, listen: false);
     final output = await _commandService.execute(
       trimmed,
       themeProvider: widget.themeProvider,
+      habitProvider: habitProvider,
     );
 
     setState(() {
-      _outputHistory.addAll(output);
+      _persistentHistory.addAll(output);
       _processingCommand = false;
     });
     _scrollToBottom();
@@ -258,41 +265,10 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       onTap: () => _focusNode.requestFocus(),
       child: Container(
         color: Colors.black,
-        padding: const EdgeInsets.only(left: 24, right: 24, bottom: 24, top: 80),
+        padding: const EdgeInsets.only(left: 24, right: 24, bottom: 16, top: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ─── HABIT TRACKER SWIPE HINT ──────────────
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '// TERMINAL_AI_SHELL',
-                    style: AppFonts.jetBrainsMono(
-                      color: const Color(0xFF69FF94).withValues(alpha: 0.5),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: widget.onSwipeLeft,
-                    child: Text(
-                      'HABITS →',
-                      style: AppFonts.jetBrainsMono(
-                        color: const Color(0xFF69FF94),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
             // ─── OUTPUT AREA ───────────────────────────────
             Expanded(
               child: _mode == TerminalMode.contactPicker

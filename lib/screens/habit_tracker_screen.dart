@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/habit.dart';
 import '../providers/habit_provider.dart';
+import '../services/habit_reminder_service.dart';
 import '../utils/app_fonts.dart';
 
 class HabitTrackerScreen extends StatefulWidget {
@@ -20,6 +21,8 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
   static const Color pureBlack = Color(0xFF000000);
   static const Color cardDark = Color(0xFF101010);
   static const Color surfaceBorder = Color(0xFF222222);
+
+  String _selectedCategoryFilter = 'ALL';
 
   @override
   void initState() {
@@ -48,6 +51,13 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
             int completionPercent = totalHabits > 0
                 ? ((totalCompletionsToday / totalHabits) * 100).round()
                 : 0;
+
+            // Filtered habits
+            final filteredHabits = _selectedCategoryFilter == 'ALL'
+                ? habitProvider.habits
+                : habitProvider.habits
+                    .where((h) => h.category.toUpperCase() == _selectedCategoryFilter)
+                    .toList();
 
             return Column(
               children: [
@@ -154,7 +164,50 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                           completionPercent,
                         ),
 
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 24),
+
+                        // ─── CATEGORY FILTER CHIPS ────────────────
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: Row(
+                            children: ['ALL', 'FITNESS', 'MIND', 'HEALTH', 'WORK', 'CREATIVE']
+                                .map((cat) {
+                              final isSel = _selectedCategoryFilter == cat;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedCategoryFilter = cat;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isSel ? terminalGreen : cardDark,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isSel ? terminalGreen : surfaceBorder,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '[$cat]',
+                                      style: AppFonts.jetBrainsMono(
+                                        color: isSel ? Colors.black : Colors.white.withValues(alpha: 0.5),
+                                        fontSize: 10,
+                                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
 
                         // ─── PER HABIT SECTION HEADER ─────────────
                         Row(
@@ -176,7 +229,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '${habitProvider.habits.length}',
+                                '${filteredHabits.length}',
                                 style: AppFonts.jetBrainsMono(
                                   color: terminalGreen,
                                   fontSize: 10,
@@ -199,15 +252,15 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                         const SizedBox(height: 12),
 
                         // ─── HABIT CARDS LIST ──────────────────────
-                        if (habitProvider.habits.isEmpty)
+                        if (filteredHabits.isEmpty)
                           _buildEmptyState()
                         else
                           ListView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: habitProvider.habits.length,
+                            itemCount: filteredHabits.length,
                             itemBuilder: (context, index) {
-                              final habit = habitProvider.habits[index];
+                              final habit = filteredHabits[index];
                               return _buildHabitCard(habit, habitProvider, now);
                             },
                           ),
@@ -411,146 +464,413 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
     // Generate last 7 days
     final last7Days = List.generate(7, (i) => now.subtract(Duration(days: 6 - i)));
 
-    // Calculate completion streak in last 7 days
-    int completedCount = 0;
-    for (final d in last7Days) {
-      if (habit.isCompletedOn(d)) completedCount++;
-    }
+    // Calculate completion streak
+    final streak = provider.getStreak(habit);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cardDark,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: surfaceBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        habit.name.toUpperCase().replaceAll(' ', '_'),
-                        style: AppFonts.jetBrainsMono(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: terminalGreen.withValues(alpha: 0.1),
-                        border: Border.all(color: terminalGreen.withValues(alpha: 0.3)),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        habit.category,
-                        style: AppFonts.jetBrainsMono(
-                          color: terminalGreen,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
+    return InkWell(
+      onTap: () => _showHabitDetailSheet(context, habit, provider, now),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardDark,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: surfaceBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          habit.name.toUpperCase().replaceAll(' ', '_'),
+                          style: AppFonts.jetBrainsMono(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '$completedCount/7d',
-                style: AppFonts.jetBrainsMono(
-                  color: completedCount >= 5 ? terminalGreen : Colors.white.withValues(alpha: 0.3),
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: () => provider.deleteHabit(habit.id),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Icon(
-                    Icons.delete_outline_rounded,
-                    color: Colors.white.withValues(alpha: 0.35),
-                    size: 17,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: terminalGreen.withValues(alpha: 0.1),
+                          border: Border.all(color: terminalGreen.withValues(alpha: 0.3)),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          habit.category,
+                          style: AppFonts.jetBrainsMono(
+                            color: terminalGreen,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // 7 Days Completion Status Blocks
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: last7Days.map((date) {
-              final isDone = habit.isCompletedOn(date);
-              final isToday = date.day == now.day &&
-                  date.month == now.month &&
-                  date.year == now.year;
-              final dayLetter = DateFormat('E').format(date)[0];
-
-              return InkWell(
-                onTap: () => provider.toggleHabitCompletion(habit.id, date),
-                borderRadius: BorderRadius.circular(8),
-                child: Column(
-                  children: [
-                    Text(
-                      dayLetter,
-                      style: AppFonts.jetBrainsMono(
-                        color: isToday
-                            ? terminalGreen
-                            : Colors.white.withValues(alpha: 0.3),
-                        fontSize: 10,
-                        fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                      ),
+                Text(
+                  '🔥 ${streak}d streak',
+                  style: AppFonts.jetBrainsMono(
+                    color: streak > 0 ? terminalGreen : Colors.white.withValues(alpha: 0.3),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () => provider.deleteHabit(habit.id),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.white.withValues(alpha: 0.35),
+                      size: 17,
                     ),
-                    const SizedBox(height: 6),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: isDone ? terminalGreen : Colors.white.withValues(alpha: 0.04),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: isDone
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // 7 Days Completion Status Blocks
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: last7Days.map((date) {
+                final isDone = habit.isCompletedOn(date);
+                final isToday = date.day == now.day &&
+                    date.month == now.month &&
+                    date.year == now.year;
+                final dayLetter = DateFormat('E').format(date)[0];
+
+                return InkWell(
+                  onTap: () => provider.toggleHabitCompletion(habit.id, date),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Column(
+                    children: [
+                      Text(
+                        dayLetter,
+                        style: AppFonts.jetBrainsMono(
+                          color: isToday
                               ? terminalGreen
-                              : isToday
-                                  ? terminalGreen.withValues(alpha: 0.6)
-                                  : Colors.white.withValues(alpha: 0.12),
-                          width: isToday ? 1.5 : 1,
+                              : Colors.white.withValues(alpha: 0.3),
+                          fontSize: 10,
+                          fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
                         ),
-                        boxShadow: isDone
-                            ? [
-                                BoxShadow(
-                                  color: terminalGreen.withValues(alpha: 0.25),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
-                                ),
-                              ]
+                      ),
+                      const SizedBox(height: 6),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: isDone ? terminalGreen : Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isDone
+                                ? terminalGreen
+                                : isToday
+                                    ? terminalGreen.withValues(alpha: 0.6)
+                                    : Colors.white.withValues(alpha: 0.12),
+                            width: isToday ? 1.5 : 1,
+                          ),
+                          boxShadow: isDone
+                              ? [
+                                  BoxShadow(
+                                    color: terminalGreen.withValues(alpha: 0.25),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: isDone
+                            ? const Icon(Icons.check, size: 16, color: Colors.black)
                             : null,
                       ),
-                      child: isDone
-                          ? const Icon(Icons.check, size: 16, color: Colors.black)
-                          : null,
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── HABIT DETAIL TELEMETRY MODAL SHEET ─────────────────────
+  void _showHabitDetailSheet(
+    BuildContext context,
+    Habit habit,
+    HabitProvider provider,
+    DateTime now,
+  ) {
+    final streak = provider.getStreak(habit);
+    final bestStreak = provider.getBestStreak(habit);
+    final totalCommits = habit.completedDates.length;
+    final isDoneToday = habit.isCompletedOn(now);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: cardDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDetailState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+                top: 20,
+                left: 20,
+                right: 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Header
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              habit.name.toUpperCase().replaceAll(' ', '_'),
+                              style: AppFonts.jetBrainsMono(
+                                color: terminalGreen,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'category: ${habit.category} • duration: ${habit.targetDuration} • reminder: ${habit.reminderTime}',
+                              style: AppFonts.inter(
+                                color: Colors.white.withValues(alpha: 0.45),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Telemetry Stats Row
+                  Row(
+                    children: [
+                      _buildStatBox('CURRENT STREAK', '🔥 ${streak}d', terminalGreen),
+                      const SizedBox(width: 8),
+                      _buildStatBox('BEST STREAK', '🏆 ${bestStreak}d', const Color(0xFFFFD580)),
+                      const SizedBox(width: 8),
+                      _buildStatBox('LIFETIME', '$totalCommits commits', Colors.white),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Individual 60-Day Contribution Heatmap
+                  Text(
+                    '// RECENT_60_DAYS_HEATMAP',
+                    style: AppFonts.jetBrainsMono(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.03),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: surfaceBorder),
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        const cols = 12;
+                        const rows = 5;
+                        const totalDays = cols * rows;
+
+                        return Column(
+                          children: List.generate(rows, (r) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: List.generate(cols, (c) {
+                                  final daysAgo = totalDays - 1 - (c * rows + r);
+                                  final targetDate = now.subtract(Duration(days: daysAgo));
+                                  final isCompleted = habit.isCompletedOn(targetDate);
+
+                                  return Container(
+                                    width: 16,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                      color: isCompleted
+                                          ? terminalGreen
+                                          : Colors.white.withValues(alpha: 0.05),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                  );
+                                }),
+                              ),
+                            );
+                          }),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Reminder Alert Action
+                  InkWell(
+                    onTap: () {
+                      HabitReminderService.showInAppReminder(context, habit);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: surfaceBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.notifications_active_outlined, color: terminalGreen, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'REMINDER ALERT: ${habit.reminderTime}',
+                            style: AppFonts.jetBrainsMono(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'TEST',
+                            style: AppFonts.jetBrainsMono(
+                              color: terminalGreen,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Toggle Today Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        provider.toggleHabitCompletion(habit.id, now);
+                        setDetailState(() {});
+                        Navigator.of(ctx).pop();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isDoneToday
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : terminalGreen,
+                        foregroundColor: isDoneToday ? Colors.white : Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        isDoneToday ? 'MARK AS INCOMPLETE TODAY' : 'MARK COMPLETE FOR TODAY',
+                        style: AppFonts.jetBrainsMono(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildStatBox(String label, String value, Color valueColor) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: surfaceBorder),
+        ),
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: AppFonts.jetBrainsMono(
+                color: Colors.white.withValues(alpha: 0.35),
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: AppFonts.jetBrainsMono(
+                color: valueColor,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -574,7 +894,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'NO_HABITS_YET',
+              'NO_HABITS_IN_CATEGORY',
               style: AppFonts.jetBrainsMono(
                 color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 13,

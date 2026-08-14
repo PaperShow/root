@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../providers/habit_provider.dart';
 import '../providers/theme_provider.dart';
 import 'groq_service.dart';
 import 'launcher_service.dart';
@@ -83,6 +84,13 @@ class TerminalCommandService {
         trimmed.startsWith('ai ') ||
         trimmed.startsWith('groq ') ||
         trimmed.startsWith('setkey ') ||
+        trimmed.startsWith('done ') ||
+        trimmed.startsWith('check ') ||
+        trimmed.startsWith('undone ') ||
+        trimmed.startsWith('uncheck ') ||
+        trimmed.startsWith('addhabit ') ||
+        trimmed == 'habits' ||
+        trimmed == 'habit' ||
         trimmed == 'help' ||
         trimmed == 'notes' ||
         trimmed == 'clear' ||
@@ -95,7 +103,8 @@ class TerminalCommandService {
     final trimmed = input.trim().toLowerCase();
     final commands = [
       'call', 'msg', 'note', 'search', 'goog', 'calc', 
-      'ai', 'groq', 'setkey', 'help', 'notes', 'clear', 'sys'
+      'ai', 'groq', 'setkey', 'help', 'notes', 'clear', 'sys',
+      'habits', 'habit', 'done', 'check', 'undone', 'uncheck', 'addhabit'
     ];
     for (final cmd in commands) {
       if (trimmed == cmd || trimmed.startsWith('$cmd ')) {
@@ -109,6 +118,7 @@ class TerminalCommandService {
   Future<List<TerminalOutput>> execute(
     String input, {
     required ThemeProvider themeProvider,
+    HabitProvider? habitProvider,
   }) async {
     final trimmed = input.trim();
     final lower = trimmed.toLowerCase();
@@ -123,6 +133,44 @@ class TerminalCommandService {
 
     if (lower == 'sys') {
       return await executeSystemInfo();
+    }
+
+    // ─── HABIT COMMANDS ──────────────────────────────────
+    if (lower == 'habits' || lower == 'habit' || lower == 'habit list') {
+      return _executeHabitList(habitProvider);
+    }
+
+    if (lower == 'habit stats' || lower == 'habit streak') {
+      return _executeHabitStats(habitProvider);
+    }
+
+    if (lower.startsWith('done ') || lower.startsWith('check ')) {
+      final name = lower.startsWith('done ')
+          ? trimmed.substring(5).trim()
+          : trimmed.substring(6).trim();
+      return _executeHabitDone(name, habitProvider);
+    }
+
+    if (lower.startsWith('habit done ')) {
+      final name = trimmed.substring(11).trim();
+      return _executeHabitDone(name, habitProvider);
+    }
+
+    if (lower.startsWith('undone ') || lower.startsWith('uncheck ')) {
+      final name = lower.startsWith('undone ')
+          ? trimmed.substring(7).trim()
+          : trimmed.substring(8).trim();
+      return _executeHabitUndone(name, habitProvider);
+    }
+
+    if (lower.startsWith('addhabit ')) {
+      final name = trimmed.substring(9).trim();
+      return _executeHabitAdd(name, habitProvider);
+    }
+
+    if (lower.startsWith('habit add ')) {
+      final name = trimmed.substring(10).trim();
+      return _executeHabitAdd(name, habitProvider);
     }
 
     if (lower.startsWith('setkey ')) {
@@ -358,7 +406,11 @@ class TerminalCommandService {
       TerminalOutput.info('│       TERMINAL QUICK ACTIONS        │'),
       TerminalOutput.info('├─────────────────────────────────────┤'),
       TerminalOutput(text: '│ ai [query]        ask Groq AI       │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ setkey [key]      set Groq API key  │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ habits            list daily habits │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ done [habit]      mark habit done   │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ undone [habit]    uncheck habit     │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ addhabit [name]   create habit      │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ habit stats       habit telemetry   │', color: const Color(0xFF69FF94)),
       TerminalOutput(text: '│ call              list contacts     │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ call [name]       direct dial       │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ msg [name] [text] send sms          │', color: const Color(0xFFFFD580)),
@@ -634,6 +686,137 @@ class TerminalCommandService {
     return [
       TerminalOutput.system('> msg ${bestMatch.name.toLowerCase()}'),
       TerminalOutput.success('  opening sms to ${bestMatch.phone}...'),
+    ];
+  }
+
+  // ─── HABIT COMMANDS ─────────────────────────────────────
+
+  List<TerminalOutput> _executeHabitList(HabitProvider? provider) {
+    if (provider == null) {
+      return [TerminalOutput.error('  habit tracker service unavailable')];
+    }
+
+    final habits = provider.habits;
+    if (habits.isEmpty) {
+      return [
+        TerminalOutput.info('┌─── HABIT TRACKER ───────────────────┐'),
+        TerminalOutput.dim('│ No habits configured yet.           │'),
+        TerminalOutput.ai('│ Type "addhabit <name>" to create!   │'),
+        TerminalOutput.info('└─────────────────────────────────────┘'),
+      ];
+    }
+
+    final now = DateTime.now();
+    final progress = provider.getTodayProgress();
+    final comp = progress['completed'] ?? 0;
+    final total = progress['total'] ?? 0;
+
+    final output = <TerminalOutput>[
+      TerminalOutput.aiHeader('┌─── HABITS ($comp/$total DONE TODAY) ─────────'),
+    ];
+
+    for (final h in habits) {
+      final isDone = h.isCompletedOn(now);
+      final streak = provider.getStreak(h);
+      final check = isDone ? '[✓]' : '[ ]';
+      final nameStr = h.name.padRight(16);
+      final nameDisplay = nameStr.length > 16 ? '${nameStr.substring(0, 14)}..' : nameStr;
+
+      output.add(TerminalOutput(
+        text: '  $check $nameDisplay 🔥 ${streak}d streak  [${h.category}]',
+        color: isDone ? const Color(0xFF69FF94) : Colors.white.withValues(alpha: 0.6),
+        isBold: isDone,
+      ));
+    }
+
+    output.add(TerminalOutput.aiHeader('├──────────────────────────────────────'));
+    output.add(TerminalOutput.dim('  Commands: done <name> | undone <name> | addhabit <name>'));
+    output.add(TerminalOutput.aiHeader('└──────────────────────────────────────'));
+    return output;
+  }
+
+  List<TerminalOutput> _executeHabitDone(String query, HabitProvider? provider) {
+    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
+    if (query.isEmpty) return [TerminalOutput.error('usage: done <habit_name>')];
+
+    final updated = provider.markHabitDoneByName(query);
+    if (updated == null) {
+      return [
+        TerminalOutput.system('> done $query'),
+        TerminalOutput.error('  no matching habit found for "$query"'),
+        TerminalOutput.info('  type "habits" to list your tracked habits'),
+      ];
+    }
+
+    final streak = provider.getStreak(updated);
+    final prog = provider.getTodayProgress();
+
+    return [
+      TerminalOutput.system('> done ${updated.name}'),
+      TerminalOutput.success('  ✓ Marked ${updated.name} completed for today! (🔥 ${streak}d streak)'),
+      TerminalOutput.info('  [HABITS: ${prog['completed']}/${prog['total']} DONE]'),
+    ];
+  }
+
+  List<TerminalOutput> _executeHabitUndone(String query, HabitProvider? provider) {
+    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
+    if (query.isEmpty) return [TerminalOutput.error('usage: undone <habit_name>')];
+
+    final updated = provider.markHabitUndoneByName(query);
+    if (updated == null) {
+      return [
+        TerminalOutput.system('> undone $query'),
+        TerminalOutput.error('  no matching habit found for "$query"'),
+      ];
+    }
+
+    final prog = provider.getTodayProgress();
+    return [
+      TerminalOutput.system('> undone ${updated.name}'),
+      TerminalOutput(
+        text: '  ↩ Unchecked ${updated.name} for today',
+        color: Colors.white.withValues(alpha: 0.7),
+      ),
+      TerminalOutput.info('  [HABITS: ${prog['completed']}/${prog['total']} DONE]'),
+    ];
+  }
+
+  List<TerminalOutput> _executeHabitAdd(String query, HabitProvider? provider) {
+    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
+    if (query.isEmpty) return [TerminalOutput.error('usage: addhabit <habit_name>')];
+
+    final newHabit = provider.addHabitFromCli(query);
+    return [
+      TerminalOutput.system('> addhabit ${newHabit.name}'),
+      TerminalOutput.success('  ✓ Created new habit: ${newHabit.name} [DAILY]'),
+      TerminalOutput.info('  Swipe left from terminal to customize time or category!'),
+    ];
+  }
+
+  List<TerminalOutput> _executeHabitStats(HabitProvider? provider) {
+    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
+
+    final habits = provider.habits;
+    final prog = provider.getTodayProgress();
+    final comp = prog['completed'] ?? 0;
+    final total = prog['total'] ?? 0;
+    final percent = total > 0 ? ((comp / total) * 100).round() : 0;
+
+    int totalLifetimeCommits = 0;
+    int highestStreak = 0;
+    for (final h in habits) {
+      totalLifetimeCommits += h.completedDates.length;
+      final bStreak = provider.getBestStreak(h);
+      if (bStreak > highestStreak) highestStreak = bStreak;
+    }
+
+    return [
+      TerminalOutput.aiHeader('┌─── HABIT TELEMETRY ─────────────────'),
+      TerminalOutput(text: '  Today\'s Progress:  $percent% ($comp/$total completed)', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '  Active Habits:     $total tracked', color: Colors.white),
+      TerminalOutput(text: '  Total Commits:     $totalLifetimeCommits completions', color: Colors.white),
+      TerminalOutput(text: '  Best Streak:       🔥 $highestStreak days', color: const Color(0xFFFFD580)),
+      TerminalOutput.aiHeader('└─────────────────────────────────────'),
     ];
   }
 }

@@ -130,6 +130,119 @@ class HabitProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> reorderHabit(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _habits.length) return;
+    if (newIndex < 0 || newIndex >= _habits.length) return;
+
+    final habit = _habits.removeAt(oldIndex);
+    _habits.insert(newIndex, habit);
+    notifyListeners();
+    await _save();
+  }
+
+  /// Calculates consecutive day streak ending today or yesterday
+  int getStreak(Habit habit) {
+    final now = DateTime.now();
+    int streak = 0;
+    DateTime checkDate = habit.isCompletedOn(now)
+        ? now
+        : now.subtract(const Duration(days: 1));
+
+    while (habit.isCompletedOn(checkDate)) {
+      streak++;
+      checkDate = checkDate.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  /// Calculates best streak ever achieved for this habit
+  int getBestStreak(Habit habit) {
+    if (habit.completedDates.isEmpty) return 0;
+
+    final sortedDates = habit.completedDates.map((d) => DateTime.parse(d)).toList()
+      ..sort();
+
+    int maxStreak = 0;
+    int currentStreak = 0;
+    DateTime? prev;
+
+    for (final date in sortedDates) {
+      if (prev == null) {
+        currentStreak = 1;
+      } else {
+        final diff = date.difference(prev).inDays;
+        if (diff == 1) {
+          currentStreak++;
+        } else if (diff > 1) {
+          currentStreak = 1;
+        }
+      }
+      if (currentStreak > maxStreak) maxStreak = currentStreak;
+      prev = date;
+    }
+    return maxStreak;
+  }
+
+  /// Returns today's completion progress: { 'completed': int, 'total': int }
+  Map<String, int> getTodayProgress() {
+    final now = DateTime.now();
+    final completed = totalCompletionsOn(now);
+    return {'completed': completed, 'total': _habits.length};
+  }
+
+  /// CLI: Mark habit done by name match for today
+  Habit? markHabitDoneByName(String nameQuery) {
+    final cleanQuery = nameQuery.trim().toLowerCase().replaceAll('_', ' ');
+    final index = _habits.indexWhere((h) =>
+        h.name.toLowerCase().replaceAll('_', ' ').contains(cleanQuery));
+
+    if (index != -1) {
+      final now = DateTime.now();
+      final dateStr = _formatDate(now);
+      final habit = _habits[index];
+      final updatedDates = Set<String>.from(habit.completedDates)..add(dateStr);
+      _habits[index] = habit.copyWith(completedDates: updatedDates);
+      notifyListeners();
+      _save();
+      return _habits[index];
+    }
+    return null;
+  }
+
+  /// CLI: Mark habit undone by name match for today
+  Habit? markHabitUndoneByName(String nameQuery) {
+    final cleanQuery = nameQuery.trim().toLowerCase().replaceAll('_', ' ');
+    final index = _habits.indexWhere((h) =>
+        h.name.toLowerCase().replaceAll('_', ' ').contains(cleanQuery));
+
+    if (index != -1) {
+      final now = DateTime.now();
+      final dateStr = _formatDate(now);
+      final habit = _habits[index];
+      final updatedDates = Set<String>.from(habit.completedDates)..remove(dateStr);
+      _habits[index] = habit.copyWith(completedDates: updatedDates);
+      notifyListeners();
+      _save();
+      return _habits[index];
+    }
+    return null;
+  }
+
+  /// CLI: Quick add habit from terminal
+  Habit addHabitFromCli(String name, {String category = 'DAILY'}) {
+    final newHabit = Habit(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name.toUpperCase().replaceAll(' ', '_'),
+      scheduleDays: [1, 2, 3, 4, 5, 6, 7],
+      reminderTime: '08:00 AM',
+      category: category,
+      targetDuration: '30 MIN',
+      completedDates: {},
+    );
+    addHabit(newHabit);
+    return newHabit;
+  }
+
   String _formatDate(DateTime date) {
     final y = date.year.toString().padLeft(4, '0');
     final m = date.month.toString().padLeft(2, '0');

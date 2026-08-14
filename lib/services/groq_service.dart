@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class GroqService {
-  static const String _groqEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  static const String _groqEndpoint =
+      'https://api.groq.com/openai/v1/chat/completions';
   static const String defaultModel = 'llama-3.3-70b-versatile';
 
   /// >>> PROVIDE YOUR GROQ API KEY HERE <<<
@@ -30,7 +31,7 @@ class GroqService {
           'role': 'system',
           'content':
               'You are Root AI, a concise and highly intelligent terminal assistant integrated into a minimalist launcher. '
-                  'Provide clear, direct, accurate, and formatted text outputs. Keep answers well-structured for terminal display.',
+              'Provide clear, direct, accurate, and formatted text outputs. Keep answers well-structured for terminal display.',
         },
       ];
 
@@ -38,24 +39,23 @@ class GroqService {
         messages.addAll(conversationHistory);
       }
 
-      messages.add({
-        'role': 'user',
-        'content': prompt,
-      });
+      messages.add({'role': 'user', 'content': prompt});
 
-      final response = await http.post(
-        Uri.parse(_groqEndpoint),
-        headers: {
-          'Authorization': 'Bearer $cleanKey',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'model': model ?? defaultModel,
-          'messages': messages,
-          'temperature': 0.7,
-          'max_tokens': 1024,
-        }),
-      ).timeout(const Duration(seconds: 25));
+      final response = await http
+          .post(
+            Uri.parse(_groqEndpoint),
+            headers: {
+              'Authorization': 'Bearer $cleanKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': model ?? defaultModel,
+              'messages': messages,
+              'temperature': 0.7,
+              'max_tokens': 1024,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -66,7 +66,8 @@ class GroqService {
         return '[AI] Received empty response from Groq.';
       } else {
         final errJson = jsonDecode(response.body);
-        final errMsg = errJson['error']?['message'] ?? 'HTTP ${response.statusCode}';
+        final errMsg =
+            errJson['error']?['message'] ?? 'HTTP ${response.statusCode}';
         return '[AI ERROR] Groq API Error ($response.statusCode): $errMsg';
       }
     } catch (e) {

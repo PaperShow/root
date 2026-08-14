@@ -8,6 +8,7 @@ import '../providers/theme_provider.dart';
 import '../services/launcher_service.dart';
 import '../styles/standard_style.dart';
 import '../styles/terminal_style.dart';
+import '../utils/app_fonts.dart';
 import '../widgets/digital_grain.dart';
 import '../widgets/minimal_clock.dart';
 import '../widgets/status_strip.dart';
@@ -66,19 +67,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkLauncherStatus();
+      _checkLauncherStatus(initial: false);
     }
   }
 
-  Future<void> _checkLauncherStatus() async {
-    setState(() {
-      _checkingLauncher = true;
-    });
+  Future<void> _checkLauncherStatus({bool initial = true}) async {
+    if (initial) {
+      setState(() {
+        _checkingLauncher = true;
+      });
+    }
     final isDefault = await LauncherService.isDefaultLauncher();
-    setState(() {
-      _isDefaultLauncher = isDefault;
-      _checkingLauncher = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isDefaultLauncher = isDefault;
+        _checkingLauncher = false;
+      });
+    }
   }
 
   Future<void> _loadApps() async {
@@ -175,15 +180,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             return GestureDetector(
               onDoubleTap: () => LauncherService.lockScreen(),
               behavior: HitTestBehavior.translucent,
-              child: Stack(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildCurrentStyle(),
-
-                  // Top overlay for clock and settings
-                  Positioned(
-                    top: 16,
-                    left: 24,
-                    right: 24,
+                  // ─── TOP HEADER ────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 14, 20, 4),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -200,10 +202,75 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   isTerminal: widget.themeProvider.currentTheme ==
                                       LauncherThemeType.terminal,
                                 ),
+                                Consumer<HabitProvider>(
+                                  builder: (context, habitProvider, _) {
+                                    final progress = habitProvider.getTodayProgress();
+                                    final completed = progress['completed'] ?? 0;
+                                    final total = progress['total'] ?? 0;
+                                    if (total == 0) return const SizedBox.shrink();
+
+                                    final maxBlocks = 5;
+                                    final filledBlocks = total > 0 ? ((completed / total) * maxBlocks).round() : 0;
+                                    final blockStr = '${'■' * filledBlocks}${'□' * (maxBlocks - filledBlocks)}';
+
+                                    return GestureDetector(
+                                      onTap: _navigateToHabitTracker,
+                                      child: Container(
+                                        margin: const EdgeInsets.only(top: 8),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF101010),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: const Color(0xFF69FF94).withValues(alpha: 0.35),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              'HABITS ',
+                                              style: AppFonts.jetBrainsMono(
+                                                color: const Color(0xFF69FF94),
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 1,
+                                              ),
+                                            ),
+                                            Text(
+                                              blockStr,
+                                              style: const TextStyle(
+                                                color: Color(0xFF69FF94),
+                                                fontSize: 10,
+                                                letterSpacing: 1,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '$completed/$total',
+                                              style: AppFonts.jetBrainsMono(
+                                                color: Colors.white.withValues(alpha: 0.8),
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Icon(
+                                              Icons.arrow_forward_rounded,
+                                              color: Color(0xFF69FF94),
+                                              size: 11,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                                 if (widget.themeProvider.isStatusStripEnabled &&
                                     widget.themeProvider.currentTheme !=
                                         LauncherThemeType.terminal) ...[
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 8),
                                   const StatusStrip(),
                                 ],
                               ],
@@ -242,10 +309,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
 
-                  if (_loading)
-                    const Center(
-                      child: CircularProgressIndicator(color: Colors.white54),
-                    ),
+                  // ─── MAIN CONTENT SURFACE ──────────────────
+                  Expanded(
+                    child: _loading
+                        ? const Center(
+                            child: CircularProgressIndicator(color: Colors.white54),
+                          )
+                        : _buildCurrentStyle(),
+                  ),
                 ],
               ),
             );
@@ -332,17 +403,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  double _contentTopPadding() {
-    const overlayTop = 16.0;
-    const clockHeight = 130.0;
-    final statusStripHeight = widget.themeProvider.isStatusStripEnabled &&
-            widget.themeProvider.currentTheme != LauncherThemeType.terminal
-        ? 30.0
-        : 0.0;
-    const bottomBuffer = 24.0;
-    return overlayTop + clockHeight + statusStripHeight + bottomBuffer;
-  }
-
   Widget _buildCurrentStyle() {
     if (_loading) return const SizedBox.shrink();
 
@@ -351,7 +411,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return StandardStyle(
           apps: _apps,
           themeProvider: widget.themeProvider,
-          contentTopPadding: _contentTopPadding(),
         );
       case LauncherThemeType.terminal:
         return TerminalStyle(

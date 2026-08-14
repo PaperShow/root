@@ -8,13 +8,11 @@ import '../utils/app_launcher.dart';
 class StandardStyle extends StatefulWidget {
   final List<AppInfo> apps;
   final ThemeProvider themeProvider;
-  final double contentTopPadding;
 
   const StandardStyle({
     super.key,
     required this.apps,
     required this.themeProvider,
-    required this.contentTopPadding,
   });
 
   @override
@@ -73,80 +71,77 @@ class _StandardStyleState extends State<StandardStyle> {
         .take(ThemeProvider.maxDockApps)
         .toList();
 
-    return Padding(
-      padding: EdgeInsets.only(top: widget.contentTopPadding),
-      child: Column(
-        children: [
-          // ─── SEARCH BAR ──────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.15),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.search,
-                    color: const Color(0xFF69FF94).withValues(alpha: 0.8),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (val) {
-                        setState(() {
-                          _searchQuery = val.trim();
-                        });
-                      },
-                      style: AppFonts.inter(
-                        color: Colors.white,
-                        fontSize: 14,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'search apps...',
-                        hintStyle: AppFonts.inter(
-                          color: Colors.white.withValues(alpha: 0.35),
-                          fontSize: 14,
-                        ),
-                        border: InputBorder.none,
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                  if (_searchQuery.isNotEmpty)
-                    GestureDetector(
-                      onTap: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                      },
-                      child: Icon(
-                        Icons.close,
-                        color: Colors.white.withValues(alpha: 0.5),
-                        size: 18,
-                      ),
-                    ),
-                ],
+    return Column(
+      children: [
+        // ─── SEARCH BAR ──────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
               ),
             ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search,
+                  color: const Color(0xFF69FF94).withValues(alpha: 0.8),
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val.trim();
+                      });
+                    },
+                    style: AppFonts.inter(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'search apps...',
+                      hintStyle: AppFonts.inter(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        fontSize: 14,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                if (_searchQuery.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                    },
+                    child: Icon(
+                      Icons.close,
+                      color: Colors.white.withValues(alpha: 0.5),
+                      size: 18,
+                    ),
+                  ),
+              ],
+            ),
           ),
+        ),
 
-          // ─── CONTENT AREA ────────────────────────────────
-          Expanded(
-            child: _searchQuery.isNotEmpty
-                ? _buildSearchResults(columns, showLabels, showIcons)
-                : _buildHomeAndDrawer(pinnedAppInfos, columns, showLabels, showIcons),
-          ),
-        ],
-      ),
+        // ─── CONTENT AREA ────────────────────────────────
+        Expanded(
+          child: _searchQuery.isNotEmpty
+              ? _buildSearchResults(columns, showLabels, showIcons)
+              : _buildHomeAndDrawer(pinnedAppInfos, columns, showLabels, showIcons),
+        ),
+      ],
     );
   }
 
@@ -154,11 +149,16 @@ class _StandardStyleState extends State<StandardStyle> {
   Widget _buildSearchResults(int columns, bool showLabels, bool showIcons) {
     if (_filteredApps.isEmpty) {
       return Center(
-        child: Text(
-          'no matching apps found',
-          style: AppFonts.inter(
-            color: Colors.white.withValues(alpha: 0.4),
-            fontSize: 14,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Text(
+              'no matching apps found',
+              style: AppFonts.inter(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 14,
+              ),
+            ),
           ),
         ),
       );
@@ -200,17 +200,18 @@ class _StandardStyleState extends State<StandardStyle> {
               // ══════════════════════════════════════════════
               // SECTION 1: FRONT SCREEN (DOCK MAX 10)
               // ══════════════════════════════════════════════
-              SizedBox(
-                height: screenHeight,
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: screenHeight > 0 ? screenHeight : 300),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Spacer(),
+                      const SizedBox(height: 8),
 
                       // Quick tip / info
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.04),
                           borderRadius: BorderRadius.circular(16),
@@ -222,7 +223,7 @@ class _StandardStyleState extends State<StandardStyle> {
                             Icon(
                               Icons.touch_app_outlined,
                               color: const Color(0xFF69FF94).withValues(alpha: 0.7),
-                              size: 16,
+                              size: 15,
                             ),
                             const SizedBox(width: 8),
                             Text(
@@ -236,19 +237,19 @@ class _StandardStyleState extends State<StandardStyle> {
                         ),
                       ),
 
-                      const Spacer(),
+                      const SizedBox(height: 16),
 
                       // FRONT DOCK (MAX 10 APPS)
                       _buildFrontDock(pinnedAppInfos, showLabels, showIcons),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
 
                       // SCROLL DOWN BUTTON INDICATOR
                       InkWell(
                         onTap: _scrollToAllApps,
                         borderRadius: BorderRadius.circular(20),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -265,7 +266,7 @@ class _StandardStyleState extends State<StandardStyle> {
                               Icon(
                                 Icons.keyboard_arrow_down,
                                 color: const Color(0xFF69FF94).withValues(alpha: 0.8),
-                                size: 22,
+                                size: 20,
                               ),
                             ],
                           ),
