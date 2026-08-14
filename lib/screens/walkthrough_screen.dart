@@ -19,28 +19,21 @@ class _Slide {
 final List<_Slide> _kSlides = [
   const _Slide(
     icon: Icons.waving_hand_outlined,
-    title: 'RootL, three ways',
+    title: 'RootL Launcher',
     bullets: [
-      'pick the interface that fits your mood in settings',
-      'typography, bauhaus and terminal all launch the same apps',
-      'swipe through this walkthrough to see how each one works',
+      'minimalist command-line interface & authentic phone launcher',
+      'integrated Groq AI Chatbot for instant natural queries',
+      'built-in Habit Tracker commit board (swipe left)',
     ],
   ),
-  _Slide(
-    icon: Icons.view_list_outlined,
-    tip: kThemeTips[LauncherThemeType.typography],
-  ),
-  _Slide(
-    icon: Icons.category_outlined,
-    tip: kThemeTips[LauncherThemeType.bauhaus],
-  ),
   _Slide(icon: Icons.terminal, tip: kThemeTips[LauncherThemeType.terminal]),
+  _Slide(
+    icon: Icons.phone_android_outlined,
+    tip: kThemeTips[LauncherThemeType.standard],
+  ),
   const _Slide(icon: Icons.touch_app_outlined, tip: kUniversalTips),
 ];
 
-/// A short, skippable onboarding walkthrough covering all three themes.
-/// Shown automatically on first run, and reachable anytime via the help
-/// icon on the home screen or the "how this launcher works" Settings entry.
 class WalkthroughScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
   final VoidCallback onDone;

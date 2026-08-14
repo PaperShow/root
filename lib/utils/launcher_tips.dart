@@ -10,31 +10,21 @@ class ThemeTip {
 }
 
 const Map<LauncherThemeType, ThemeTip> kThemeTips = {
-  LauncherThemeType.typography: ThemeTip(
-    title: 'list & typography',
-    bullets: [
-      'tap an app to open it',
-      'long-press an app on "all apps" to pin it to your home screen',
-      'drag pinned apps on the home screen to arrange them however you like',
-      'swipe left or right to move between home and all apps',
-      'type to search, or drag the a-z rail on the right edge',
-    ],
-  ),
-  LauncherThemeType.bauhaus: ThemeTip(
-    title: 'bauhaus geometric',
-    bullets: [
-      'tap a shape to open its app',
-      'long-press an app in the grid to pin it to the dock up top',
-      'drag dock apps to arrange them however you like',
-      'change grid density (3-5 columns) in settings',
-    ],
-  ),
   LauncherThemeType.terminal: ThemeTip(
-    title: 'terminal / command',
+    title: 'terminal / command shell',
     bullets: [
       'start typing to filter apps instantly',
-      'try commands: call, msg, note, calc, search, sys',
-      'type help anytime for the full command list',
+      'ask Groq AI any question directly in terminal',
+      'try commands: call, msg, note, calc, search, sys, setkey',
+      'swipe left to access your Habit Tracker commit board',
+    ],
+  ),
+  LauncherThemeType.standard: ThemeTip(
+    title: 'original / standard phone',
+    bullets: [
+      'authentic phone app grid with quick search bar',
+      'tap an app to open it, or long-press to pin it to dock',
+      'customize grid columns (3-5), app labels, and icons in settings',
     ],
   ),
 };
@@ -42,8 +32,9 @@ const Map<LauncherThemeType, ThemeTip> kThemeTips = {
 const kUniversalTips = ThemeTip(
   title: 'everywhere',
   bullets: [
-    'long-press the clock to switch between typography, bauhaus and terminal',
+    'swipe left on terminal screen to open Habit Tracker',
+    'long-press the clock to switch between Terminal and Standard Phone launcher',
     'double-tap anywhere to lock the screen',
-    'open settings (gear icon) to toggle the intent wall, icons, status strip and wallpaper',
+    'open settings (gear icon) to configure Groq API Key and customization options',
   ],
 );

@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../providers/theme_provider.dart';
+import 'groq_service.dart';
 import 'launcher_service.dart';
 
 /// Represents a line of output in the terminal history.
@@ -42,8 +44,11 @@ class TerminalOutput {
   TerminalOutput.dim(String text)
       : this(text: text, color: Colors.white.withValues(alpha: 0.35));
 
-  TerminalOutput.label(String text)
-      : this(text: text, color: const Color(0xFF82AAFF), isBold: true);
+  TerminalOutput.ai(String text)
+      : this(text: text, color: const Color(0xFF69FF94), isBold: false);
+
+  TerminalOutput.aiHeader(String text)
+      : this(text: text, color: const Color(0xFF69FF94), isBold: true);
 }
 
 /// A contact entry with name and phone number for display in the terminal.
@@ -60,7 +65,7 @@ enum TerminalMode {
   contactPicker,  // Showing contact list for call/msg
 }
 
-/// Service that parses and executes terminal power commands.
+/// Service that parses and executes terminal power commands & Groq AI queries.
 class TerminalCommandService {
   List<TerminalContact> _cachedContacts = [];
   bool _contactsLoaded = false;
@@ -75,16 +80,23 @@ class TerminalCommandService {
         trimmed.startsWith('search ') ||
         trimmed.startsWith('goog ') ||
         trimmed.startsWith('calc ') ||
+        trimmed.startsWith('ai ') ||
+        trimmed.startsWith('groq ') ||
+        trimmed.startsWith('setkey ') ||
         trimmed == 'help' ||
         trimmed == 'notes' ||
         trimmed == 'clear' ||
-        trimmed == 'sys';
+        trimmed == 'sys' ||
+        trimmed == 'ai';
   }
 
   /// Parse the command prefix from input.
   String? getCommandPrefix(String input) {
     final trimmed = input.trim().toLowerCase();
-    final commands = ['call', 'msg', 'note', 'search', 'goog', 'calc', 'help', 'notes', 'clear', 'sys'];
+    final commands = [
+      'call', 'msg', 'note', 'search', 'goog', 'calc', 
+      'ai', 'groq', 'setkey', 'help', 'notes', 'clear', 'sys'
+    ];
     for (final cmd in commands) {
       if (trimmed == cmd || trimmed.startsWith('$cmd ')) {
         return cmd;
@@ -93,8 +105,11 @@ class TerminalCommandService {
     return null;
   }
 
-  /// Execute a command and return terminal output lines.
-  Future<List<TerminalOutput>> execute(String input) async {
+  /// Execute a command or AI query and return terminal output lines.
+  Future<List<TerminalOutput>> execute(
+    String input, {
+    required ThemeProvider themeProvider,
+  }) async {
     final trimmed = input.trim();
     final lower = trimmed.toLowerCase();
 
@@ -108,6 +123,15 @@ class TerminalCommandService {
 
     if (lower == 'sys') {
       return await executeSystemInfo();
+    }
+
+    if (lower.startsWith('setkey ')) {
+      final key = trimmed.substring(7).trim();
+      themeProvider.setGroqApiKey(key);
+      return [
+        TerminalOutput.system('> setkey ${'*' * (key.length > 8 ? 8 : key.length)}'),
+        TerminalOutput.success('  ✓ Groq API key updated successfully!'),
+      ];
     }
 
     if (lower.startsWith('calc ')) {
@@ -130,7 +154,6 @@ class TerminalCommandService {
     }
 
     if (lower == 'call') {
-      // Will be handled by TerminalMode switch in the widget
       return [TerminalOutput.info('[SYS] loading contacts...')];
     }
 
@@ -144,17 +167,64 @@ class TerminalCommandService {
       return await _executeMessage(parts);
     }
 
-    return [TerminalOutput.error('unknown command: $trimmed')];
+    if (lower.startsWith('ai ') || lower.startsWith('groq ')) {
+      final prompt = lower.startsWith('ai ')
+          ? trimmed.substring(3).trim()
+          : trimmed.substring(5).trim();
+      return await executeAiQuery(prompt, themeProvider.groqApiKey);
+    }
+
+    if (lower == 'ai' || lower == 'groq') {
+      return [
+        TerminalOutput.info('┌─── GROQ AI CHATBOT ───────────────┐'),
+        TerminalOutput.ai('  Ask any question directly in terminal!'),
+        TerminalOutput.dim('  Usage: ai <your question> or type directly'),
+        TerminalOutput.dim('  Set key: setkey <gsk_...>'),
+        TerminalOutput.info('└───────────────────────────────────┘'),
+      ];
+    }
+
+    // Default Fallback: Route unknown prompt directly to Groq AI!
+    return await executeAiQuery(trimmed, themeProvider.groqApiKey);
+  }
+
+  /// Query Groq AI and format the response into terminal output lines.
+  Future<List<TerminalOutput>> executeAiQuery(String prompt, String apiKey) async {
+    if (prompt.isEmpty) {
+      return [TerminalOutput.error('usage: ai <your prompt or question>')];
+    }
+
+    final output = <TerminalOutput>[
+      TerminalOutput.system('> ai $prompt'),
+      TerminalOutput.info('  [Groq Llama-3.3] thinking...'),
+    ];
+
+    final response = await GroqService.askGroq(
+      prompt: prompt,
+      apiKey: apiKey,
+    );
+
+    // Format response into terminal lines
+    output.add(TerminalOutput.aiHeader('┌─── GROQ AI RESPONSE ─────────────────'));
+
+    final lines = response.split('\n');
+    for (final line in lines) {
+      if (line.trim().isEmpty) {
+        output.add(TerminalOutput.dim(''));
+      } else {
+        output.add(TerminalOutput.ai('  $line'));
+      }
+    }
+
+    output.add(TerminalOutput.aiHeader('└──────────────────────────────────────'));
+    return output;
   }
 
   // ─── SYSTEM INFO (neofetch) ────────────────────────────
 
-  /// Gathers and formats system info in a neofetch-style layout.
-  /// Public so it can be called on startup from the terminal widget.
   Future<List<TerminalOutput>> executeSystemInfo() async {
     final output = <TerminalOutput>[];
 
-    // ── Gather data ──
     int batteryLevel = 0;
     String batteryState = 'unknown';
     try {
@@ -178,7 +248,6 @@ class TerminalCommandService {
       }
     } catch (_) {}
 
-    // Native system info (network, screen time, calendar, device)
     Map<String, dynamic> sysInfo = {};
     try {
       sysInfo = await LauncherService.getSystemInfo();
@@ -192,7 +261,6 @@ class TerminalCommandService {
     final deviceModel = sysInfo['deviceModel'] as String? ?? 'unknown';
     final androidVersion = sysInfo['androidVersion'] as String? ?? '?';
 
-    // ── Format battery bar ──
     final filledBlocks = (batteryLevel / 10).round();
     final emptyBlocks = 10 - filledBlocks;
     final batteryBar = '${'█' * filledBlocks}${'░' * emptyBlocks}';
@@ -202,7 +270,6 @@ class TerminalCommandService {
             ? const Color(0xFFFFD580)
             : const Color(0xFFFF6B6B);
 
-    // ── Format network ──
     String networkDisplay;
     if (networkType == 'wifi') {
       networkDisplay = wifiSsid != null ? 'wifi ($wifiSsid)' : 'wifi';
@@ -214,7 +281,6 @@ class TerminalCommandService {
       networkDisplay = networkType;
     }
 
-    // ── Format screen time ──
     String screenTimeDisplay;
     if (screenTimeMinutes < 0) {
       screenTimeDisplay = 'n/a (enable in settings)';
@@ -228,7 +294,6 @@ class TerminalCommandService {
       }
     }
 
-    // ── Format calendar ──
     String calendarDisplay;
     if (nextEventTitle != null && nextEventTime != null) {
       final title = nextEventTitle.length > 20
@@ -239,7 +304,6 @@ class TerminalCommandService {
       calendarDisplay = 'no upcoming events';
     }
 
-    // ── Build output ──
     final host = deviceModel.toLowerCase().replaceAll(' ', '_');
 
     output.add(TerminalOutput.dim(''));
@@ -250,19 +314,16 @@ class TerminalCommandService {
     ));
     output.add(TerminalOutput.dim('  ${'─' * (7 + host.length)}'));
 
-    // OS line
     output.add(TerminalOutput(
       text: '  os      android $androidVersion',
       color: const Color(0xFFE0E0E0),
     ));
 
-    // Battery line
     output.add(TerminalOutput(
       text: '  bat     $batteryLevel% [$batteryState] $batteryBar',
       color: batteryColor,
     ));
 
-    // Network line
     output.add(TerminalOutput(
       text: '  net     $networkDisplay',
       color: networkType == 'offline'
@@ -270,7 +331,6 @@ class TerminalCommandService {
           : const Color(0xFFE0E0E0),
     ));
 
-    // Screen time line
     output.add(TerminalOutput(
       text: '  screen  $screenTimeDisplay',
       color: screenTimeMinutes < 0
@@ -278,7 +338,6 @@ class TerminalCommandService {
           : const Color(0xFFE0E0E0),
     ));
 
-    // Calendar line
     output.add(TerminalOutput(
       text: '  cal     $calendarDisplay',
       color: nextEventTitle != null
@@ -298,19 +357,20 @@ class TerminalCommandService {
       TerminalOutput.info('┌─────────────────────────────────────┐'),
       TerminalOutput.info('│       TERMINAL QUICK ACTIONS        │'),
       TerminalOutput.info('├─────────────────────────────────────┤'),
+      TerminalOutput(text: '│ ai [query]        ask Groq AI       │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ setkey [key]      set Groq API key  │', color: const Color(0xFF69FF94)),
       TerminalOutput(text: '│ call              list contacts     │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ call [name]       direct dial       │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ msg [name] [text] send sms          │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ note [text]       save a note       │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ notes             view all notes    │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ search [query]    google search     │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ goog [query]      google search     │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ calc [expr]       evaluate math     │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ sys               system info       │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ clear             clear terminal    │', color: const Color(0xFFFFD580)),
       TerminalOutput(text: '│ help              show this help    │', color: const Color(0xFFFFD580)),
       TerminalOutput.info('└─────────────────────────────────────┘'),
-      TerminalOutput.system('  type any text to search apps'),
+      TerminalOutput.aiHeader('  ★ Ask any AI question directly or swipe left for Habit Tracker!'),
     ];
   }
 
@@ -322,7 +382,6 @@ class TerminalCommandService {
     }
 
     try {
-      // Replace common aliases
       String sanitized = expression
           .replaceAll('x', '*')
           .replaceAll('×', '*')
@@ -333,7 +392,6 @@ class TerminalCommandService {
       ContextModel cm = ContextModel();
       double result = exp.evaluate(EvaluationType.REAL, cm);
 
-      // Format: strip trailing zeros for clean output
       String formatted = result == result.truncateToDouble()
           ? result.toInt().toString()
           : result.toStringAsFixed(6).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
@@ -410,7 +468,6 @@ class TerminalCommandService {
         TerminalOutput.info('┌─── NOTES ─────────────────────────┐'),
       ];
 
-      // Show last 10 notes
       final recent = lines.length > 10 ? lines.sublist(lines.length - 10) : lines;
       for (final line in recent) {
         output.add(TerminalOutput(text: '  $line', color: const Color(0xFFE0E0E0)));
@@ -462,7 +519,6 @@ class TerminalCommandService {
         .toList();
   }
 
-  /// Invalidate cached contacts so they're re-fetched next time.
   void invalidateContacts() {
     _contactsLoaded = false;
     _cachedContacts = [];
@@ -485,7 +541,6 @@ class TerminalCommandService {
     }
 
     if (matches.length == 1) {
-      // Direct call
       final contact = matches.first;
       final phoneUrl = Uri.parse('tel:${contact.phone}');
       await launchUrl(phoneUrl);
@@ -495,7 +550,6 @@ class TerminalCommandService {
       ];
     }
 
-    // Multiple matches — show list (widget will handle selection)
     final output = <TerminalOutput>[
       TerminalOutput.system('> call $name'),
       TerminalOutput.info('  ${matches.length} contacts found:'),
@@ -515,7 +569,6 @@ class TerminalCommandService {
     return output;
   }
 
-  /// Directly call a contact by phone number.
   Future<List<TerminalOutput>> callDirect(TerminalContact contact) async {
     final phoneUrl = Uri.parse('tel:${contact.phone}');
     await launchUrl(phoneUrl);
@@ -535,14 +588,11 @@ class TerminalCommandService {
       return [TerminalOutput.error('  contacts permission denied')];
     }
 
-    // Try to extract name and message
-    // Strategy: try matching first word, then first two words, etc. against contacts
     final words = input.split(' ');
     
     TerminalContact? bestMatch;
     String message = '';
 
-    // Try progressively longer name prefixes
     for (int i = 1; i <= words.length; i++) {
       final nameCandidate = words.sublist(0, i).join(' ');
       final matches = await getContacts(filter: nameCandidate);
@@ -555,7 +605,6 @@ class TerminalCommandService {
     }
 
     if (bestMatch == null) {
-      // Fallback: use first word as name
       final nameCandidate = words.first;
       final matches = await getContacts(filter: nameCandidate);
       if (matches.isNotEmpty) {
@@ -579,7 +628,6 @@ class TerminalCommandService {
       ];
     }
 
-    // Open SMS compose
     final smsUrl = Uri.parse('sms:${bestMatch.phone}?body=${Uri.encodeComponent(message)}');
     await launchUrl(smsUrl);
 

@@ -36,7 +36,7 @@ class IntentWallScreen extends StatefulWidget {
   final AppInfo app;
   final VoidCallback onComplete;
 
-  const IntentWallScreen({Key? key, required this.app, required this.onComplete}) : super(key: key);
+  const IntentWallScreen({super.key, required this.app, required this.onComplete});
 
   @override
   State<IntentWallScreen> createState() => _IntentWallScreenState();

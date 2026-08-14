@@ -9,8 +9,14 @@ import '../utils/app_launcher.dart';
 class TerminalStyle extends StatefulWidget {
   final List<AppInfo> apps;
   final ThemeProvider themeProvider;
+  final VoidCallback? onSwipeLeft;
 
-  const TerminalStyle({Key? key, required this.apps, required this.themeProvider}) : super(key: key);
+  const TerminalStyle({
+    super.key,
+    required this.apps,
+    required this.themeProvider,
+    this.onSwipeLeft,
+  });
 
   @override
   State<TerminalStyle> createState() => _TerminalStyleState();
@@ -29,7 +35,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
   TerminalMode _mode = TerminalMode.normal;
   bool _processingCommand = false;
 
-  // Blink animation for cursor prompt
   late AnimationController _blinkController;
 
   @override
@@ -40,35 +45,20 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
 
-    // Show welcome hint then auto-run sys info
-    _outputHistory = [
-      TerminalOutput.system('[SYS] root launcher v1.0'),
-    ];
+    _outputHistory = [];
     _loadSystemInfo();
   }
 
-  /// Auto-fetch and display system info (neofetch) on startup.
   Future<void> _loadSystemInfo() async {
     try {
       final sysOutput = await _commandService.executeSystemInfo();
       if (mounted) {
         setState(() {
           _outputHistory.addAll(sysOutput);
-          _outputHistory.add(
-            TerminalOutput.system('[SYS] type "help" for quick actions'),
-          );
         });
         _scrollToBottom();
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _outputHistory.add(
-            TerminalOutput.system('[SYS] type "help" for quick actions'),
-          );
-        });
-      }
-    }
+    } catch (_) {}
   }
 
   void _onInputChanged(String query) {
@@ -77,18 +67,15 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       return;
     }
 
-    // Check if it's a known command prefix
     final cmdPrefix = _commandService.getCommandPrefix(query);
 
     if (cmdPrefix != null) {
-      // It's a command — don't filter apps
       setState(() {
         _filteredApps = [];
       });
       return;
     }
 
-    // Regular app search
     _filterApps(query);
   }
 
@@ -126,7 +113,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     if (trimmed.isEmpty) return;
 
     if (_mode == TerminalMode.contactPicker) {
-      // Try to parse as a number (selection index)
       final index = int.tryParse(trimmed);
       if (index != null && index >= 1 && index <= _filteredContacts.length) {
         final contact = _filteredContacts[index - 1];
@@ -143,7 +129,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
         _scrollToBottom();
         return;
       }
-      // If not a number, search contacts by name
+
       final matches = _filteredContacts
           .where((c) => c.name.toLowerCase().contains(trimmed.toLowerCase()))
           .toList();
@@ -164,65 +150,69 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       return;
     }
 
-    // Check if it's a command
-    if (_commandService.isCommand(trimmed)) {
-      _controller.clear();
+    // Check if exact app match exists and input is single app name
+    final exactAppMatches = widget.apps
+        .where((app) => app.name.toLowerCase() == trimmed.toLowerCase())
+        .toList();
+
+    if (exactAppMatches.isNotEmpty && !_commandService.isCommand(trimmed)) {
+      _launchApp(exactAppMatches.first);
+      return;
+    }
+
+    // Process command or route query to Groq AI
+    _controller.clear();
+    setState(() {
+      _filteredApps = [];
+      _processingCommand = true;
+    });
+
+    if (trimmed.toLowerCase() == 'call') {
       setState(() {
-        _filteredApps = [];
-        _processingCommand = true;
+        _outputHistory.add(TerminalOutput.info('[SYS] loading contacts...'));
       });
 
-      // Handle "call" (bare) — switch to contact picker mode
-      if (trimmed.toLowerCase() == 'call') {
+      final contacts = await _commandService.getContacts();
+
+      if (contacts.isEmpty) {
         setState(() {
-          _outputHistory.add(TerminalOutput.info('[SYS] loading contacts...'));
-        });
-
-        final contacts = await _commandService.getContacts();
-
-        if (contacts.isEmpty) {
-          setState(() {
-            _outputHistory.add(TerminalOutput.error('  no contacts found or permission denied'));
-            _processingCommand = false;
-          });
-          _scrollToBottom();
-          return;
-        }
-
-        setState(() {
-          _contactList = contacts;
-          _contactFilter = '';
-          _mode = TerminalMode.contactPicker;
-          _outputHistory.add(TerminalOutput.success('  ${contacts.length} contacts loaded'));
-          _outputHistory.add(TerminalOutput.info('  type name to filter, or # to select'));
+          _outputHistory.add(TerminalOutput.error('  no contacts found or permission denied'));
           _processingCommand = false;
         });
         _scrollToBottom();
         return;
       }
 
-      // Handle "clear"
-      if (trimmed.toLowerCase() == 'clear') {
-        setState(() {
-          _outputHistory = [];
-          _processingCommand = false;
-        });
-        return;
-      }
-
-      final output = await _commandService.execute(trimmed);
       setState(() {
-        _outputHistory.addAll(output);
+        _contactList = contacts;
+        _contactFilter = '';
+        _mode = TerminalMode.contactPicker;
+        _outputHistory.add(TerminalOutput.success('  ${contacts.length} contacts loaded'));
+        _outputHistory.add(TerminalOutput.info('  type name to filter, or # to select'));
         _processingCommand = false;
       });
       _scrollToBottom();
       return;
     }
 
-    // Not a command — launch the first matching app
-    if (_filteredApps.isNotEmpty) {
-      _launchApp(_filteredApps.first);
+    if (trimmed.toLowerCase() == 'clear') {
+      setState(() {
+        _outputHistory = [];
+        _processingCommand = false;
+      });
+      return;
     }
+
+    final output = await _commandService.execute(
+      trimmed,
+      themeProvider: widget.themeProvider,
+    );
+
+    setState(() {
+      _outputHistory.addAll(output);
+      _processingCommand = false;
+    });
+    _scrollToBottom();
   }
 
   void _launchApp(AppInfo app) {
@@ -272,6 +262,37 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─── HABIT TRACKER SWIPE HINT ──────────────
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '// TERMINAL_AI_SHELL',
+                    style: AppFonts.jetBrainsMono(
+                      color: const Color(0xFF69FF94).withValues(alpha: 0.5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: widget.onSwipeLeft,
+                    child: Text(
+                      'HABITS →',
+                      style: AppFonts.jetBrainsMono(
+                        color: const Color(0xFF69FF94),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             // ─── OUTPUT AREA ───────────────────────────────
             Expanded(
               child: _mode == TerminalMode.contactPicker
@@ -281,7 +302,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
 
             const SizedBox(height: 8),
 
-            // ─── INPUT LINE (no box, just cursor) ────────
+            // ─── INPUT LINE ────────────────────────────────
             _buildInputLine(),
           ],
         ),
@@ -295,7 +316,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ─── HISTORY (top, shrinks when results appear) ───
         Flexible(
           flex: hasFilteredApps ? 0 : 1,
           child: hasFilteredApps
@@ -307,7 +327,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
                 ),
         ),
 
-        // ─── FILTERED APP RESULTS (bottom-anchored, always visible) ───
         if (hasFilteredApps)
           Expanded(
             child: ListView.builder(
@@ -315,7 +334,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
               physics: const BouncingScrollPhysics(),
               itemCount: _filteredApps.length,
               itemBuilder: (context, index) {
-                // Reverse index so first match is at the bottom (closest to cursor)
                 final app = _filteredApps[_filteredApps.length - 1 - index];
                 return _buildAppResult(app);
               },
@@ -327,8 +345,8 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
 
   Widget _buildOutputLine(TerminalOutput output) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
-      child: Text(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: SelectableText(
         output.text,
         style: AppFonts.jetBrainsMono(
           color: output.color,
@@ -345,7 +363,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       onTap: () => _launchApp(app),
       borderRadius: BorderRadius.circular(4),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5.0),
+        padding: const EdgeInsets.symmetric(vertical: 6.0),
         child: Row(
           children: [
             Text(
@@ -385,7 +403,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header bar
         Row(
           children: [
             Text(
@@ -422,7 +439,6 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
         ),
         const SizedBox(height: 8),
 
-        // Contact list
         Expanded(
           child: contacts.isEmpty
               ? Center(
@@ -499,10 +515,9 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
 
   Widget _buildInputLine() {
     final isContactMode = _mode == TerminalMode.contactPicker;
-    final promptColor = isContactMode ? const Color(0xFF82AAFF) : Colors.green;
+    final promptColor = isContactMode ? const Color(0xFF82AAFF) : const Color(0xFF69FF94);
     final promptText = isContactMode ? 'call> ' : '\$ ';
 
-    // Simple raw terminal line — no box, no border, just the cursor
     return Row(
       children: [
         AnimatedBuilder(
@@ -538,21 +553,23 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
               border: InputBorder.none,
               isDense: true,
               contentPadding: EdgeInsets.zero,
-              hintText: isContactMode ? 'search or tap to call...' : 'type command or app name...',
+              hintText: isContactMode
+                  ? 'search or tap to call...'
+                  : 'type AI question or command...',
               hintStyle: AppFonts.jetBrainsMono(
-                color: Colors.white.withValues(alpha: 0.15),
-                fontSize: 16,
+                color: Colors.white.withValues(alpha: 0.2),
+                fontSize: 15,
               ),
             ),
           ),
         ),
         if (_processingCommand)
-          SizedBox(
+          const SizedBox(
             width: 16,
             height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 1.5,
-              valueColor: AlwaysStoppedAnimation(promptColor.withValues(alpha: 0.5)),
+              valueColor: AlwaysStoppedAnimation(Color(0xFF69FF94)),
             ),
           ),
       ],

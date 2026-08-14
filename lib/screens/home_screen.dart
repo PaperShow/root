@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/habit_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/launcher_service.dart';
-import '../styles/bauhaus_style.dart';
+import '../styles/standard_style.dart';
 import '../styles/terminal_style.dart';
-import '../styles/typography_style.dart';
 import '../widgets/digital_grain.dart';
 import '../widgets/minimal_clock.dart';
 import '../widgets/status_strip.dart';
+import 'habit_tracker_screen.dart';
 import 'settings_screen.dart';
 import 'walkthrough_screen.dart';
 
@@ -23,6 +25,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  final PageController _pageController = PageController();
+  final HabitProvider _habitProvider = HabitProvider();
+
   List<AppInfo> _apps = [];
   bool _loading = true;
   bool _isDefaultLauncher = false;
@@ -36,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     widget.themeProvider.addListener(_handleThemeProviderChange);
     _iconsEnabledSnapshot = widget.themeProvider.isIconsEnabled;
+    _habitProvider.init();
     _checkLauncherStatus();
     _loadApps();
   }
@@ -44,6 +50,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.themeProvider.removeListener(_handleThemeProviderChange);
+    _pageController.dispose();
+    _habitProvider.dispose();
     super.dispose();
   }
 
@@ -93,6 +101,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _navigateToHabitTracker() {
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _navigateToMainLauncher() {
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_checkingLauncher) {
@@ -113,110 +141,115 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: DigitalGrain(
-          opacity: 0.08,
-          child: SafeArea(
-            child: ListenableBuilder(
-              listenable: widget.themeProvider,
-              builder: (context, _) {
-                return GestureDetector(
-                  onDoubleTap: () => LauncherService.lockScreen(),
-                  behavior: HitTestBehavior.translucent,
-                  child: Stack(
-                    children: [
-                      _buildCurrentStyle(),
+    return ChangeNotifierProvider<HabitProvider>.value(
+      value: _habitProvider,
+      child: PopScope(
+        canPop: false,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: PageView(
+            controller: _pageController,
+            physics: const BouncingScrollPhysics(),
+            children: [
+              // Page 0: Main Launcher Surface (Terminal or Standard)
+              _buildMainLauncherPage(),
 
-                      // Top overlay for clock and settings
-                      Positioned(
-                      top: 16,
-                      left: 24,
-                      right: 24,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Flexible(
-                            child: GestureDetector(
-                              onLongPress: () => widget.themeProvider.nextTheme(),
-                              behavior: HitTestBehavior.opaque,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  MinimalClock(
-                                    isTerminal:
-                                        widget.themeProvider.currentTheme ==
-                                            LauncherThemeType.terminal,
-                                    isBauhaus:
-                                        widget.themeProvider.currentTheme ==
-                                            LauncherThemeType.bauhaus,
-                                  ),
-                                  if (widget.themeProvider.isStatusStripEnabled &&
-                                      widget.themeProvider.currentTheme !=
-                                          LauncherThemeType.terminal) ...[
-                                    const SizedBox(height: 10),
-                                    const StatusStrip(),
-                                  ],
+              // Page 1: Habit Tracker Screen (Swipe Left from Terminal)
+              HabitTrackerScreen(
+                onSwipeRight: _navigateToMainLauncher,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainLauncherPage() {
+    return DigitalGrain(
+      opacity: 0.08,
+      child: SafeArea(
+        child: ListenableBuilder(
+          listenable: widget.themeProvider,
+          builder: (context, _) {
+            return GestureDetector(
+              onDoubleTap: () => LauncherService.lockScreen(),
+              behavior: HitTestBehavior.translucent,
+              child: Stack(
+                children: [
+                  _buildCurrentStyle(),
+
+                  // Top overlay for clock and settings
+                  Positioned(
+                    top: 16,
+                    left: 24,
+                    right: 24,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: GestureDetector(
+                            onLongPress: () => widget.themeProvider.nextTheme(),
+                            behavior: HitTestBehavior.opaque,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                MinimalClock(
+                                  isTerminal: widget.themeProvider.currentTheme ==
+                                      LauncherThemeType.terminal,
+                                ),
+                                if (widget.themeProvider.isStatusStripEnabled &&
+                                    widget.themeProvider.currentTheme !=
+                                        LauncherThemeType.terminal) ...[
+                                  const SizedBox(height: 10),
+                                  const StatusStrip(),
                                 ],
-                              ),
+                              ],
                             ),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(
-                                  Icons.help_outline,
-                                  color: Colors.white.withValues(alpha: 0.5),
-                                ),
-                                tooltip: 'How to use',
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => WalkthroughScreen(
-                                        themeProvider: widget.themeProvider,
-                                        onDone: () => Navigator.of(context).pop(),
-                                      ),
-                                    ),
-                                  );
-                                },
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                Icons.format_list_bulleted,
+                                color: const Color(0xFF69FF94).withValues(alpha: 0.9),
                               ),
-                              IconButton(
-                                icon: Icon(
-                                  Icons.settings_outlined,
-                                  color: Colors.white.withValues(alpha: 0.5),
-                                ),
-                                tooltip: 'Settings',
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => SettingsScreen(
-                                          themeProvider: widget.themeProvider),
-                                    ),
-                                  );
-                                },
+                              tooltip: 'Habit Tracker',
+                              onPressed: _navigateToHabitTracker,
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                Icons.settings_outlined,
+                                color: Colors.white.withValues(alpha: 0.5),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
+                              tooltip: 'Settings',
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => SettingsScreen(
+                                        themeProvider: widget.themeProvider),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
+                  ),
 
-                    if (_loading)
-                      const Center(
-                        child:
-                            CircularProgressIndicator(color: Colors.white54),
-                      ),
-                  ],
-                ),
-              );
-            },
-            ),
-          ),
+                  if (_loading)
+                    const Center(
+                      child: CircularProgressIndicator(color: Colors.white54),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -234,8 +267,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.phone_android, color: Colors.white,
-                    size: 64),
+                const Icon(Icons.phone_android, color: Colors.white, size: 64),
                 const SizedBox(height: 24),
                 const Text(
                   'enable\nminimalist\nphone',
@@ -300,12 +332,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Space the clock overlay (and, when enabled, the status strip beneath
-  /// it) actually occupies, so per-theme content never collides with it.
   double _contentTopPadding() {
     const overlayTop = 16.0;
-    final isBauhaus = widget.themeProvider.currentTheme == LauncherThemeType.bauhaus;
-    final clockHeight = isBauhaus ? 70.0 : 130.0;
+    const clockHeight = 130.0;
     final statusStripHeight = widget.themeProvider.isStatusStripEnabled &&
             widget.themeProvider.currentTheme != LauncherThemeType.terminal
         ? 30.0
@@ -318,21 +347,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_loading) return const SizedBox.shrink();
 
     switch (widget.themeProvider.currentTheme) {
-      case LauncherThemeType.typography:
-        return TypographyStyle(
-          apps: _apps,
-          themeProvider: widget.themeProvider,
-          contentTopPadding: _contentTopPadding(),
-        );
-      case LauncherThemeType.bauhaus:
-        return BauhausStyle(
+      case LauncherThemeType.standard:
+        return StandardStyle(
           apps: _apps,
           themeProvider: widget.themeProvider,
           contentTopPadding: _contentTopPadding(),
         );
       case LauncherThemeType.terminal:
         return TerminalStyle(
-            apps: _apps, themeProvider: widget.themeProvider);
+          apps: _apps,
+          themeProvider: widget.themeProvider,
+          onSwipeLeft: _navigateToHabitTracker,
+        );
     }
   }
 }

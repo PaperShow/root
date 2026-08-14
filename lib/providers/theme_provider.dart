@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum LauncherThemeType { typography, bauhaus, terminal }
+enum LauncherThemeType { terminal, standard }
 
 class ThemeProvider extends ChangeNotifier {
   static const _themeKey = 'launcher_theme';
@@ -9,15 +9,19 @@ class ThemeProvider extends ChangeNotifier {
   static const _pinnedAppsKey = 'pinned_apps';
   static const _iconsEnabledKey = 'icons_enabled';
   static const _statusStripKey = 'status_strip_enabled';
-  static const _bauhausColumnsKey = 'bauhaus_columns';
+  static const _standardColumnsKey = 'standard_columns';
+  static const _showAppLabelsKey = 'show_app_labels';
+  static const _groqApiKey = 'groq_api_key';
   static const _walkthroughKey = 'has_seen_walkthrough';
   static const _seenThemeTipsKey = 'seen_theme_tips';
 
   LauncherThemeType _currentTheme = LauncherThemeType.terminal;
   bool _isIntentWallEnabled = true;
-  bool _isIconsEnabled = false;
+  bool _isIconsEnabled = true;
   bool _isStatusStripEnabled = true;
-  int _bauhausColumns = 3;
+  int _standardGridColumns = 4;
+  bool _showAppLabels = true;
+  String _groqApiKeyVal = '';
   List<String> _pinnedApps = [];
   bool _hasSeenWalkthrough = false;
   Set<String> _seenThemeTips = {};
@@ -27,7 +31,9 @@ class ThemeProvider extends ChangeNotifier {
   bool get isIntentWallEnabled => _isIntentWallEnabled;
   bool get isIconsEnabled => _isIconsEnabled;
   bool get isStatusStripEnabled => _isStatusStripEnabled;
-  int get bauhausColumns => _bauhausColumns;
+  int get standardGridColumns => _standardGridColumns;
+  bool get showAppLabels => _showAppLabels;
+  String get groqApiKey => _groqApiKeyVal;
   List<String> get pinnedApps => List.unmodifiable(_pinnedApps);
   bool get hasSeenWalkthrough => _hasSeenWalkthrough;
   bool get isInitialized => _initialized;
@@ -41,12 +47,16 @@ class ThemeProvider extends ChangeNotifier {
         themeIndex >= 0 &&
         themeIndex < LauncherThemeType.values.length) {
       _currentTheme = LauncherThemeType.values[themeIndex];
+    } else {
+      _currentTheme = LauncherThemeType.terminal;
     }
 
     _isIntentWallEnabled = prefs.getBool(_intentWallKey) ?? true;
-    _isIconsEnabled = prefs.getBool(_iconsEnabledKey) ?? false;
+    _isIconsEnabled = prefs.getBool(_iconsEnabledKey) ?? true;
     _isStatusStripEnabled = prefs.getBool(_statusStripKey) ?? true;
-    _bauhausColumns = prefs.getInt(_bauhausColumnsKey) ?? 3;
+    _standardGridColumns = prefs.getInt(_standardColumnsKey) ?? 4;
+    _showAppLabels = prefs.getBool(_showAppLabelsKey) ?? true;
+    _groqApiKeyVal = prefs.getString(_groqApiKey) ?? '';
     _pinnedApps = prefs.getStringList(_pinnedAppsKey) ?? [];
     _hasSeenWalkthrough = prefs.getBool(_walkthroughKey) ?? false;
     _seenThemeTips = (prefs.getStringList(_seenThemeTipsKey) ?? []).toSet();
@@ -86,29 +96,49 @@ class ThemeProvider extends ChangeNotifier {
     _save();
   }
 
-  void setBauhausColumns(int columns) {
-    _bauhausColumns = columns;
+  void setStandardGridColumns(int columns) {
+    _standardGridColumns = columns;
     notifyListeners();
     _save();
   }
+
+  void toggleShowAppLabels(bool value) {
+    _showAppLabels = value;
+    notifyListeners();
+    _save();
+  }
+
+  void setGroqApiKey(String key) {
+    _groqApiKeyVal = key.trim();
+    notifyListeners();
+    _save();
+  }
+
+  static const int maxDockApps = 10;
 
   bool isPinned(String packageName) => _pinnedApps.contains(packageName);
 
-  /// Pins (or unpins) an app to the theme's quick-access surface
-  /// (Typography's home page / Bauhaus's dock).
-  void togglePinned(String packageName) {
+  /// Returns true if newly pinned, false if unpinned or reached maxDockApps limit.
+  bool togglePinned(String packageName) {
     final updated = List<String>.of(_pinnedApps);
-    if (!updated.remove(packageName)) {
+    if (updated.contains(packageName)) {
+      updated.remove(packageName);
+      _pinnedApps = updated;
+      notifyListeners();
+      _save();
+      return false;
+    } else {
+      if (updated.length >= maxDockApps) {
+        return false;
+      }
       updated.add(packageName);
+      _pinnedApps = updated;
+      notifyListeners();
+      _save();
+      return true;
     }
-    _pinnedApps = updated;
-    notifyListeners();
-    _save();
   }
 
-  /// Moves a pinned app from [oldIndex] to [newIndex] (already adjusted for
-  /// the removed item, per [ReorderableListView.onReorderItem]), letting the
-  /// user arrange their quick-access apps in whatever order they like.
   void reorderPinned(int oldIndex, int newIndex) {
     final updated = List<String>.of(_pinnedApps);
     final moved = updated.removeAt(oldIndex);
@@ -138,7 +168,9 @@ class ThemeProvider extends ChangeNotifier {
     await prefs.setBool(_intentWallKey, _isIntentWallEnabled);
     await prefs.setBool(_iconsEnabledKey, _isIconsEnabled);
     await prefs.setBool(_statusStripKey, _isStatusStripEnabled);
-    await prefs.setInt(_bauhausColumnsKey, _bauhausColumns);
+    await prefs.setInt(_standardColumnsKey, _standardGridColumns);
+    await prefs.setBool(_showAppLabelsKey, _showAppLabels);
+    await prefs.setString(_groqApiKey, _groqApiKeyVal);
     await prefs.setStringList(_pinnedAppsKey, _pinnedApps);
     await prefs.setBool(_walkthroughKey, _hasSeenWalkthrough);
     await prefs.setStringList(_seenThemeTipsKey, _seenThemeTips.toList());

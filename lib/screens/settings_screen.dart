@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import '../utils/app_fonts.dart';
-
 import '../providers/theme_provider.dart';
 import '../services/launcher_service.dart';
+import '../utils/app_fonts.dart';
 import '../widgets/digital_grain.dart';
 import '../widgets/theme_tip_sheet.dart';
 import 'walkthrough_screen.dart';
@@ -56,21 +55,15 @@ class SettingsScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     _buildThemeOption(
                       context,
-                      title: 'list & typography',
-                      subtitle: 'the purest minimalist list',
-                      theme: LauncherThemeType.typography,
-                    ),
-                    _buildThemeOption(
-                      context,
-                      title: 'bauhaus geometric',
-                      subtitle: 'abstract shapes and grids',
-                      theme: LauncherThemeType.bauhaus,
-                    ),
-                    _buildThemeOption(
-                      context,
-                      title: 'terminal / command',
-                      subtitle: 'type to filter apps',
+                      title: 'terminal / command shell',
+                      subtitle: 'type to filter apps, run commands & chat with Groq AI',
                       theme: LauncherThemeType.terminal,
+                    ),
+                    _buildThemeOption(
+                      context,
+                      title: 'original / standard phone',
+                      subtitle: 'authentic phone home screen with 10-app dock & app drawer',
+                      theme: LauncherThemeType.standard,
                     ),
                     const SizedBox(height: 12),
                     _buildActionButton(
@@ -89,6 +82,77 @@ class SettingsScreen extends StatelessWidget {
 
                     const SizedBox(height: 48),
 
+                    // STANDARD PHONE GRID SETTINGS
+                    if (themeProvider.currentTheme == LauncherThemeType.standard) ...[
+                      Text(
+                        'APP DRAWER GRID',
+                        style: AppFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.4),
+                          letterSpacing: 3,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'number of columns in the scrollable app drawer.',
+                        style: AppFonts.inter(
+                          fontSize: 13,
+                          color: Colors.white.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [3, 4, 5].map((n) {
+                          final isSelected = themeProvider.standardGridColumns == n;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 12),
+                              child: InkWell(
+                                onTap: () => themeProvider.setStandardGridColumns(n),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white.withValues(alpha: 0.15),
+                                      width: isSelected ? 1.5 : 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: isSelected
+                                        ? Colors.white.withValues(alpha: 0.05)
+                                        : null,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '$n',
+                                      style: AppFonts.inter(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w500
+                                            : FontWeight.w300,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildToggleTile(
+                        title: 'show app labels',
+                        subtitle: 'display app names under icons in standard launcher grid',
+                        value: themeProvider.showAppLabels,
+                        onChanged: (val) => themeProvider.toggleShowAppLabels(val),
+                      ),
+                      const SizedBox(height: 32),
+                    ],
+
                     // Features
                     Text(
                       'FEATURES',
@@ -101,7 +165,6 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
 
-                    // Intent Wall
                     _buildToggleTile(
                       title: 'the intent wall',
                       subtitle: 'mindful 3-second breathing delay before launching apps',
@@ -109,93 +172,18 @@ class SettingsScreen extends StatelessWidget {
                       onChanged: (val) => themeProvider.toggleIntentWall(val),
                     ),
 
-                    // App icons
                     _buildToggleTile(
                       title: 'app icons',
-                      subtitle: 'show grayscale app icons in typography and bauhaus',
+                      subtitle: 'show colorful app icons in original phone grid',
                       value: themeProvider.isIconsEnabled,
                       onChanged: (val) => themeProvider.toggleIcons(val),
                     ),
 
-                    // Status strip
                     _buildToggleTile(
                       title: 'status strip',
-                      subtitle: 'battery, network and next event, shown under the clock',
+                      subtitle: 'battery, network and next event under clock',
                       value: themeProvider.isStatusStripEnabled,
                       onChanged: (val) => themeProvider.toggleStatusStrip(val),
-                    ),
-
-                    const SizedBox(height: 8),
-                    Text(
-                      'tip: long-press the clock to cycle through themes. long-press an app to pin it to your quick-access screen, then drag to arrange it.',
-                      style: AppFonts.inter(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.35),
-                        height: 1.4,
-                      ),
-                    ),
-
-                    const SizedBox(height: 48),
-
-                    // Bauhaus grid density
-                    Text(
-                      'BAUHAUS GRID',
-                      style: AppFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.4),
-                        letterSpacing: 3,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'number of columns in the bauhaus geometric grid.',
-                      style: AppFonts.inter(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [3, 4, 5].map((n) {
-                        final isSelected = themeProvider.bauhausColumns == n;
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: InkWell(
-                              onTap: () => themeProvider.setBauhausColumns(n),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.white.withValues(alpha: 0.15),
-                                    width: isSelected ? 1.5 : 1,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                  color: isSelected
-                                      ? Colors.white.withValues(alpha: 0.05)
-                                      : null,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    '$n',
-                                    style: AppFonts.inter(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w500
-                                          : FontWeight.w300,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
                     ),
 
                     const SizedBox(height: 48),
@@ -212,7 +200,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'set a solid black wallpaper on your home and lock screen to complete the minimal look.',
+                      'set a solid black wallpaper on your home and lock screen.',
                       style: AppFonts.inter(
                         fontSize: 13,
                         color: Colors.white.withValues(alpha: 0.4),
@@ -242,18 +230,6 @@ class SettingsScreen extends StatelessWidget {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-                    _buildActionButton(
-                      label: 'match current theme (${themeProvider.currentTheme == LauncherThemeType.bauhaus ? 'charcoal' : 'black'})',
-                      onTap: () => _setWallpaper(
-                        context,
-                        which: 3,
-                        label: 'themed wallpaper',
-                        color: themeProvider.currentTheme == LauncherThemeType.bauhaus
-                            ? 0xFF222222
-                            : 0xFF000000,
-                      ),
                     ),
 
                     const SizedBox(height: 64),

@@ -27,7 +27,7 @@ class LauncherService {
     try {
       final bool result = await _channel.invokeMethod(
         'setBlackWallpaper',
-        {'which': which, if (color != null) 'color': color},
+        {'which': which, 'color': color},
       );
       return result;
     } on PlatformException {

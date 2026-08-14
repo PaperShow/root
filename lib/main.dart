@@ -20,8 +20,7 @@ void main() async {
 class MinimalLauncherApp extends StatefulWidget {
   final ThemeProvider themeProvider;
 
-  const MinimalLauncherApp({Key? key, required this.themeProvider})
-    : super(key: key);
+  const MinimalLauncherApp({super.key, required this.themeProvider});
 
   @override
   State<MinimalLauncherApp> createState() => _MinimalLauncherAppState();
