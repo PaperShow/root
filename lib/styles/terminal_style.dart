@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/habit_provider.dart';
 import '../providers/theme_provider.dart';
+import '../services/audio_record_service.dart';
+import '../services/groq_service.dart';
 import '../services/terminal_command_service.dart';
 import '../utils/app_fonts.dart';
 import '../utils/app_launcher.dart';
@@ -29,6 +32,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final TerminalCommandService _commandService = TerminalCommandService();
+  final AudioRecordService _audioRecordService = AudioRecordService();
 
   static final List<TerminalOutput> _persistentHistory = [];
   List<AppInfo> _filteredApps = [];
@@ -37,7 +41,15 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
   TerminalMode _mode = TerminalMode.normal;
   bool _processingCommand = false;
 
+  bool _isRecording = false;
+  int _recordingDuration = 0;
+  bool _isTranscribing = false;
+
+  StreamSubscription<int>? _durationSub;
+  StreamSubscription<AudioRecordStatus>? _statusSub;
+
   late AnimationController _blinkController;
+  late AnimationController _pulseController;
 
   List<TerminalOutput> get _outputHistory => _persistentHistory;
 
@@ -48,6 +60,27 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
+
+    _durationSub = _audioRecordService.durationStream.listen((duration) {
+      if (mounted) {
+        setState(() {
+          _recordingDuration = duration;
+        });
+      }
+    });
+
+    _statusSub = _audioRecordService.statusStream.listen((status) {
+      if (mounted) {
+        setState(() {
+          _isRecording = status == AudioRecordStatus.recording;
+        });
+      }
+    });
 
     if (_persistentHistory.isEmpty) {
       _loadSystemInfo();
@@ -155,6 +188,18 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       return;
     }
 
+    // Voice recording commands via typing
+    final lower = trimmed.toLowerCase();
+    if (lower == 'voice' ||
+        lower == 'rec' ||
+        lower == 'mic' ||
+        lower == 'listen' ||
+        lower == 'whisper') {
+      _controller.clear();
+      _startVoiceRecording();
+      return;
+    }
+
     // Check if exact app match exists and input is single app name
     final exactAppMatches = widget.apps
         .where((app) => app.name.toLowerCase() == trimmed.toLowerCase())
@@ -222,6 +267,113 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     _scrollToBottom();
   }
 
+  Future<void> _startVoiceRecording() async {
+    final hasPerm = await _audioRecordService.hasPermission();
+    if (!hasPerm) {
+      setState(() {
+        _outputHistory.add(TerminalOutput.error(
+          '[WHISPER ERROR] Microphone permission not granted. Please allow microphone access.',
+        ));
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    final started = await _audioRecordService.startRecording();
+    if (started) {
+      setState(() {
+        _isRecording = true;
+        _recordingDuration = 0;
+        _outputHistory.add(TerminalOutput.info(
+          '┌─── GROQ WHISPER VOICE INPUT ───────┐',
+        ));
+        _outputHistory.add(TerminalOutput(
+          text: '  ● Listening... Speak your query or command',
+          color: const Color(0xFFFF6B6B),
+          isBold: true,
+        ));
+        _outputHistory.add(TerminalOutput.dim(
+          '  Tap [TRANSCRIBE] when finished, or [CANCEL] to abort',
+        ));
+        _outputHistory.add(TerminalOutput.info(
+          '└───────────────────────────────────┘',
+        ));
+      });
+      _scrollToBottom();
+    } else {
+      setState(() {
+        _outputHistory.add(TerminalOutput.error(
+          '[WHISPER ERROR] Could not initialize audio recorder.',
+        ));
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Future<void> _stopAndTranscribeVoice() async {
+    final recordedPath = await _audioRecordService.stopRecording();
+    setState(() {
+      _isRecording = false;
+      _isTranscribing = true;
+    });
+
+    if (recordedPath == null) {
+      setState(() {
+        _isTranscribing = false;
+        _outputHistory.add(TerminalOutput.error('[WHISPER ERROR] Audio file recording failed.'));
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    setState(() {
+      _outputHistory.add(TerminalOutput.info(
+        '  [Groq Whisper-large-v3] transcribing audio...',
+      ));
+    });
+    _scrollToBottom();
+
+    final transcription = await GroqService.transcribeAudio(
+      filePath: recordedPath,
+      apiKey: widget.themeProvider.groqApiKey,
+      model: widget.themeProvider.groqWhisperModel,
+    );
+
+    setState(() {
+      _isTranscribing = false;
+    });
+
+    if (transcription.startsWith('[WHISPER ERROR]') ||
+        transcription == '[WHISPER] No speech detected.') {
+      setState(() {
+        _outputHistory.add(TerminalOutput.error(transcription));
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    // Speech detected successfully! Echo to terminal and execute
+    setState(() {
+      _outputHistory.add(TerminalOutput(
+        text: '🎙 "$transcription"',
+        color: const Color(0xFF69FF94),
+        isBold: true,
+      ));
+    });
+    _scrollToBottom();
+
+    _onSubmitted(transcription);
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    await _audioRecordService.cancelRecording();
+    setState(() {
+      _isRecording = false;
+      _outputHistory.add(TerminalOutput.dim('  [Whisper] voice recording cancelled.'));
+    });
+    _scrollToBottom();
+  }
+
   void _launchApp(AppInfo app) {
     AppLauncher.launch(context, app, widget.themeProvider);
     _controller.clear();
@@ -250,12 +402,22 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     _controller.clear();
   }
 
+  String _formatDuration(int seconds) {
+    final mins = (seconds ~/ 60).toString().padLeft(2, '0');
+    final secs = (seconds % 60).toString().padLeft(2, '0');
+    return '$mins:$secs';
+  }
+
   @override
   void dispose() {
+    _durationSub?.cancel();
+    _statusSub?.cancel();
+    _audioRecordService.dispose();
     _controller.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     _blinkController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -278,8 +440,11 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
 
             const SizedBox(height: 8),
 
-            // ─── INPUT LINE ────────────────────────────────
-            _buildInputLine(),
+            // ─── VOICE HUD / INPUT LINE ───────────────────
+            if (_isRecording)
+              _buildVoiceRecordingHud()
+            else
+              _buildInputLine(),
           ],
         ),
       ),
@@ -489,6 +654,134 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     );
   }
 
+  /// Interactive live recording HUD in the terminal
+  Widget _buildVoiceRecordingHud() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFFF6B6B).withValues(alpha: 0.5),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Pulsing REC Dot
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) {
+              return Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFF6B6B).withValues(
+                    alpha: 0.4 + (_pulseController.value * 0.6),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF6B6B).withValues(
+                        alpha: _pulseController.value * 0.5,
+                      ),
+                      blurRadius: 6,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 10),
+
+          // REC Time
+          Text(
+            'REC ${_formatDuration(_recordingDuration)}',
+            style: AppFonts.jetBrainsMono(
+              color: const Color(0xFFFF6B6B),
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1,
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Animated Waveform Bars
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(7, (i) {
+                return AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    final factor = ((i % 3) + 1) * 0.3;
+                    final height = 4.0 + (12.0 * ((_pulseController.value * factor) % 1.0));
+                    return Container(
+                      width: 3,
+                      height: height,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF69FF94).withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    );
+                  },
+                );
+              }),
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Transcribe Button
+          InkWell(
+            onTap: _stopAndTranscribeVoice,
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF69FF94).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: const Color(0xFF69FF94).withValues(alpha: 0.6),
+                ),
+              ),
+              child: Text(
+                'DONE ›',
+                style: AppFonts.jetBrainsMono(
+                  color: const Color(0xFF69FF94),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Cancel Button
+          InkWell(
+            onTap: _cancelVoiceRecording,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Text(
+                '✕',
+                style: AppFonts.jetBrainsMono(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInputLine() {
     final isContactMode = _mode == TerminalMode.contactPicker;
     final promptColor = isContactMode ? const Color(0xFF82AAFF) : const Color(0xFF69FF94);
@@ -531,21 +824,75 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
               contentPadding: EdgeInsets.zero,
               hintText: isContactMode
                   ? 'search or tap to call...'
-                  : 'type AI question or command...',
+                  : 'type AI query, command or tap mic...',
               hintStyle: AppFonts.jetBrainsMono(
                 color: Colors.white.withValues(alpha: 0.2),
-                fontSize: 15,
+                fontSize: 14,
               ),
             ),
           ),
         ),
-        if (_processingCommand)
+
+        // Transcription progress
+        if (_isTranscribing) ...[
           const SizedBox(
-            width: 16,
-            height: 16,
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              valueColor: AlwaysStoppedAnimation(Color(0xFF82AAFF)),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+
+        // Command processing indicator
+        if (_processingCommand && !_isTranscribing) ...[
+          const SizedBox(
+            width: 14,
+            height: 14,
             child: CircularProgressIndicator(
               strokeWidth: 1.5,
               valueColor: AlwaysStoppedAnimation(Color(0xFF69FF94)),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+
+        // Terminal Mic Action Button
+        if (!isContactMode)
+          GestureDetector(
+            onTap: _startVoiceRecording,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF69FF94).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: const Color(0xFF69FF94).withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.mic_none_rounded,
+                    color: Color(0xFF69FF94),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'REC',
+                    style: AppFonts.jetBrainsMono(
+                      color: const Color(0xFF69FF94),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
       ],

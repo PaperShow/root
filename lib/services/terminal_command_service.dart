@@ -84,6 +84,7 @@ class TerminalCommandService {
         trimmed.startsWith('ai ') ||
         trimmed.startsWith('groq ') ||
         trimmed.startsWith('setkey ') ||
+        trimmed.startsWith('model ') ||
         trimmed.startsWith('done ') ||
         trimmed.startsWith('check ') ||
         trimmed.startsWith('undone ') ||
@@ -95,7 +96,14 @@ class TerminalCommandService {
         trimmed == 'notes' ||
         trimmed == 'clear' ||
         trimmed == 'sys' ||
-        trimmed == 'ai';
+        trimmed == 'ai' ||
+        trimmed == 'model' ||
+        trimmed == 'models' ||
+        trimmed == 'voice' ||
+        trimmed == 'rec' ||
+        trimmed == 'mic' ||
+        trimmed == 'listen' ||
+        trimmed == 'whisper';
   }
 
   /// Parse the command prefix from input.
@@ -103,8 +111,9 @@ class TerminalCommandService {
     final trimmed = input.trim().toLowerCase();
     final commands = [
       'call', 'msg', 'note', 'search', 'goog', 'calc', 
-      'ai', 'groq', 'setkey', 'help', 'notes', 'clear', 'sys',
-      'habits', 'habit', 'done', 'check', 'undone', 'uncheck', 'addhabit'
+      'ai', 'groq', 'setkey', 'model', 'models', 'help', 'notes', 'clear', 'sys',
+      'habits', 'habit', 'done', 'check', 'undone', 'uncheck', 'addhabit',
+      'voice', 'rec', 'mic', 'listen', 'whisper'
     ];
     for (final cmd in commands) {
       if (trimmed == cmd || trimmed.startsWith('$cmd ')) {
@@ -219,41 +228,120 @@ class TerminalCommandService {
       final prompt = lower.startsWith('ai ')
           ? trimmed.substring(3).trim()
           : trimmed.substring(5).trim();
-      return await executeAiQuery(prompt, themeProvider.groqApiKey);
+      return await executeAiQuery(
+        prompt,
+        themeProvider.groqApiKey,
+        model: themeProvider.groqAiModel,
+      );
     }
 
     if (lower == 'ai' || lower == 'groq') {
       return [
-        TerminalOutput.info('┌─── GROQ AI CHATBOT ───────────────┐'),
+        TerminalOutput.info('┌─── GROQ AI CHATBOT (${themeProvider.groqAiModel}) ───┐'),
         TerminalOutput.ai('  Ask any question directly in terminal!'),
+        TerminalOutput.dim('  Powered by Groq Compound AI & Whisper STT'),
         TerminalOutput.dim('  Usage: ai <your question> or type directly'),
         TerminalOutput.dim('  Set key: setkey <gsk_...>'),
+        TerminalOutput.dim('  Switch model: model <compound|mini|llama>'),
         TerminalOutput.info('└───────────────────────────────────┘'),
       ];
     }
 
+    if (lower == 'model' || lower == 'models') {
+      return [
+        TerminalOutput.info('┌─── GROQ AI CONFIGURATION ────────┐'),
+        TerminalOutput.ai('  Active AI Model:      ${themeProvider.groqAiModel}'),
+        TerminalOutput.ai('  Active Whisper Model: ${themeProvider.groqWhisperModel}'),
+        TerminalOutput.dim('  Available Models:'),
+        TerminalOutput.system('    • groq/compound (default - agentic system)'),
+        TerminalOutput.system('    • groq/compound-mini (fast agentic compound)'),
+        TerminalOutput.system('    • openai/gpt-oss-120b (GPT-OSS 120B)'),
+        TerminalOutput.system('    • openai/gpt-oss-20b (GPT-OSS 20B)'),
+        TerminalOutput.system('    • llama-3.3-70b-versatile'),
+        TerminalOutput.dim('  Usage: model <compound | mini | gpt120 | gpt20 | llama | custom>'),
+        TerminalOutput.info('└───────────────────────────────────┘'),
+      ];
+    }
+
+    if (lower.startsWith('model ')) {
+      final target = trimmed.substring(6).trim();
+      final targetLower = target.toLowerCase();
+      String selected = target;
+      if (targetLower == 'compound' || targetLower == 'groq/compound') {
+        selected = 'groq/compound';
+      } else if (targetLower == 'mini' ||
+          targetLower == 'compound-mini' ||
+          targetLower == 'groq/compound-mini') {
+        selected = 'groq/compound-mini';
+      } else if (targetLower == 'gpt120' ||
+          targetLower == 'gpt-120' ||
+          targetLower == 'gpt-oss-120b' ||
+          targetLower == 'openai/gpt-oss-120b' ||
+          targetLower == '120b') {
+        selected = 'openai/gpt-oss-120b';
+      } else if (targetLower == 'gpt20' ||
+          targetLower == 'gpt-20' ||
+          targetLower == 'gpt-oss-20b' ||
+          targetLower == 'openai/gpt-oss-20b' ||
+          targetLower == '20b') {
+        selected = 'openai/gpt-oss-20b';
+      } else if (targetLower == 'llama' ||
+          targetLower == 'llama3.3' ||
+          targetLower == 'llama-3.3-70b-versatile') {
+        selected = 'llama-3.3-70b-versatile';
+      }
+      themeProvider.setGroqAiModel(selected);
+      return [
+        TerminalOutput.system('> model $selected'),
+        TerminalOutput.success('  ✓ Groq AI model set to $selected'),
+      ];
+    }
+
     // Default Fallback: Route unknown prompt directly to Groq AI!
-    return await executeAiQuery(trimmed, themeProvider.groqApiKey);
+    return await executeAiQuery(
+      trimmed,
+      themeProvider.groqApiKey,
+      model: themeProvider.groqAiModel,
+    );
   }
 
   /// Query Groq AI and format the response into terminal output lines.
-  Future<List<TerminalOutput>> executeAiQuery(String prompt, String apiKey) async {
+  Future<List<TerminalOutput>> executeAiQuery(
+    String prompt,
+    String apiKey, {
+    String? model,
+  }) async {
     if (prompt.isEmpty) {
       return [TerminalOutput.error('usage: ai <your prompt or question>')];
     }
 
+    final activeModel = (model != null && model.isNotEmpty)
+        ? model
+        : GroqService.defaultModel;
+
+    final String displayName = activeModel == 'groq/compound'
+        ? 'Groq Compound'
+        : activeModel == 'groq/compound-mini'
+            ? 'Groq Compound Mini'
+            : activeModel == 'openai/gpt-oss-120b'
+                ? 'GPT-OSS 120B'
+                : activeModel == 'openai/gpt-oss-20b'
+                    ? 'GPT-OSS 20B'
+                    : activeModel;
+
     final output = <TerminalOutput>[
       TerminalOutput.system('> ai $prompt'),
-      TerminalOutput.info('  [Groq Llama-3.3] thinking...'),
+      TerminalOutput.info('  [$displayName] thinking...'),
     ];
 
     final response = await GroqService.askGroq(
       prompt: prompt,
       apiKey: apiKey,
+      model: activeModel,
     );
 
     // Format response into terminal lines
-    output.add(TerminalOutput.aiHeader('┌─── GROQ AI RESPONSE ─────────────────'));
+    output.add(TerminalOutput.aiHeader('┌─── GROQ RESPONSE ($displayName) ─────'));
 
     final lines = response.split('\n');
     for (final line in lines) {
@@ -402,27 +490,29 @@ class TerminalCommandService {
 
   List<TerminalOutput> _showHelp() {
     return [
-      TerminalOutput.info('┌─────────────────────────────────────┐'),
-      TerminalOutput.info('│       TERMINAL QUICK ACTIONS        │'),
-      TerminalOutput.info('├─────────────────────────────────────┤'),
-      TerminalOutput(text: '│ ai [query]        ask Groq AI       │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ habits            list daily habits │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ done [habit]      mark habit done   │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ undone [habit]    uncheck habit     │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ addhabit [name]   create habit      │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ habit stats       habit telemetry   │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ call              list contacts     │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ call [name]       direct dial       │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ msg [name] [text] send sms          │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ note [text]       save a note       │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ notes             view all notes    │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ search [query]    google search     │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ calc [expr]       evaluate math     │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ sys               system info       │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ clear             clear terminal    │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ help              show this help    │', color: const Color(0xFFFFD580)),
-      TerminalOutput.info('└─────────────────────────────────────┘'),
-      TerminalOutput.aiHeader('  ★ Ask any AI question directly or swipe left for Habit Tracker!'),
+      TerminalOutput.info('┌──────────────────────────────────────────────┐'),
+      TerminalOutput.info('│            TERMINAL QUICK ACTIONS            │'),
+      TerminalOutput.info('├──────────────────────────────────────────────┤'),
+      TerminalOutput(text: '│ ai [query]        ask Groq AI                │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ voice / mic       record audio (Groq Whisper)│', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ model [name]      switch Groq AI model       │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ habits            list daily habits          │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ done [habit]      mark habit done            │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ undone [habit]    uncheck habit              │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ addhabit [name]   create habit               │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ habit stats       habit telemetry            │', color: const Color(0xFF69FF94)),
+      TerminalOutput(text: '│ call              list contacts              │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ call [name]       direct dial                │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ msg [name] [text] send sms                   │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ note [text]       save a note                │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ notes             view all notes             │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ search [query]    google search              │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ calc [expr]       evaluate math              │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ sys               system info                │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ clear             clear terminal             │', color: const Color(0xFFFFD580)),
+      TerminalOutput(text: '│ help              show this help             │', color: const Color(0xFFFFD580)),
+      TerminalOutput.info('└──────────────────────────────────────────────┘'),
+      TerminalOutput.aiHeader('  ★ Tap the mic icon or type a query directly to talk to Groq!'),
     ];
   }
 

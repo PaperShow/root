@@ -188,6 +188,36 @@ class SettingsScreen extends StatelessWidget {
 
                     const SizedBox(height: 48),
 
+                    // Groq AI & Voice
+                    Text(
+                      'GROQ AI & VOICE INTELLIGENCE',
+                      style: AppFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.4),
+                        letterSpacing: 3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'configured for Groq Compound agentic chat & Groq Whisper voice input.',
+                      style: AppFonts.inter(
+                        fontSize: 13,
+                        color: Colors.white.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // AI Model Selector
+                    _buildAiModelSelector(context, themeProvider),
+
+                    const SizedBox(height: 12),
+
+                    // API Key Tile
+                    _buildApiKeyTile(context, themeProvider),
+
+                    const SizedBox(height: 48),
+
                     // Wallpaper
                     Text(
                       'WALLPAPER',
@@ -438,6 +468,224 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAiModelSelector(
+    BuildContext context,
+    ThemeProvider themeProvider,
+  ) {
+    final models = [
+      {
+        'id': 'groq/compound',
+        'name': 'groq / compound (recommended)',
+        'desc': 'agentic AI with web search & integrated tools',
+      },
+      {
+        'id': 'groq/compound-mini',
+        'name': 'groq / compound-mini',
+        'desc': 'ultra low-latency compound AI model',
+      },
+      {
+        'id': 'openai/gpt-oss-120b',
+        'name': 'openai / gpt-oss-120b',
+        'desc': 'powerful 120B open-weights model on Groq LPU',
+      },
+      {
+        'id': 'openai/gpt-oss-20b',
+        'name': 'openai / gpt-oss-20b',
+        'desc': 'fast 20B open-weights model on Groq LPU',
+      },
+      {
+        'id': 'llama-3.3-70b-versatile',
+        'name': 'llama 3.3 70b versatile',
+        'desc': 'standard fast open-weight completion model',
+      },
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.psychology_outlined, color: Color(0xFF69FF94), size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'CHAT COMPLETION MODEL',
+                style: AppFonts.jetBrainsMono(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF69FF94),
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...models.map((m) {
+            final isSelected = themeProvider.groqAiModel == m['id'];
+            return InkWell(
+              onTap: () => themeProvider.setGroqAiModel(m['id']!),
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white.withValues(alpha: 0.08) : null,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF69FF94).withValues(alpha: 0.6)
+                        : Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            m['name']!,
+                            style: AppFonts.jetBrainsMono(
+                              color: isSelected ? const Color(0xFF69FF94) : Colors.white,
+                              fontSize: 13,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            m['desc']!,
+                            style: AppFonts.inter(
+                              color: Colors.white.withValues(alpha: 0.45),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(Icons.check, color: Color(0xFF69FF94), size: 16),
+                  ],
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.mic, color: Color(0xFF82AAFF), size: 14),
+              const SizedBox(width: 6),
+              Text(
+                'VOICE STT: Groq Whisper (${themeProvider.groqWhisperModel})',
+                style: AppFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: const Color(0xFF82AAFF).withValues(alpha: 0.8),
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApiKeyTile(BuildContext context, ThemeProvider themeProvider) {
+    final hasKey = themeProvider.groqApiKey.isNotEmpty;
+    final masked = hasKey
+        ? '${themeProvider.groqApiKey.substring(0, themeProvider.groqApiKey.length > 8 ? 8 : themeProvider.groqApiKey.length)}••••••••'
+        : 'using built-in default key';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'GROQ API KEY',
+                style: AppFonts.inter(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 18),
+                onPressed: () => _showApiKeyDialog(context, themeProvider),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            masked,
+            style: AppFonts.jetBrainsMono(
+              color: Colors.white.withValues(alpha: 0.4),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showApiKeyDialog(BuildContext context, ThemeProvider themeProvider) {
+    final controller = TextEditingController(text: themeProvider.groqApiKey);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF141414),
+          title: Text(
+            'Groq API Key',
+            style: AppFonts.inter(color: Colors.white, fontSize: 18),
+          ),
+          content: TextField(
+            controller: controller,
+            style: AppFonts.jetBrainsMono(color: Colors.white, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'gsk_...',
+              hintStyle: AppFonts.jetBrainsMono(color: Colors.white30, fontSize: 13),
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white30),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF69FF94)),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('cancel', style: AppFonts.inter(color: Colors.white54)),
+            ),
+            TextButton(
+              onPressed: () {
+                themeProvider.setGroqApiKey(controller.text.trim());
+                Navigator.of(ctx).pop();
+              },
+              child: Text(
+                'save',
+                style: AppFonts.inter(color: const Color(0xFF69FF94), fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

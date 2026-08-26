@@ -12,6 +12,8 @@ class ThemeProvider extends ChangeNotifier {
   static const _standardColumnsKey = 'standard_columns';
   static const _showAppLabelsKey = 'show_app_labels';
   static const _groqApiKey = 'groq_api_key';
+  static const _groqAiModelKey = 'groq_ai_model';
+  static const _groqWhisperModelKey = 'groq_whisper_model';
   static const _walkthroughKey = 'has_seen_walkthrough';
   static const _seenThemeTipsKey = 'seen_theme_tips';
 
@@ -22,6 +24,8 @@ class ThemeProvider extends ChangeNotifier {
   int _standardGridColumns = 4;
   bool _showAppLabels = true;
   String _groqApiKeyVal = '';
+  String _groqAiModelVal = 'groq/compound';
+  String _groqWhisperModelVal = 'whisper-large-v3';
   List<String> _pinnedApps = [];
   bool _hasSeenWalkthrough = false;
   Set<String> _seenThemeTips = {};
@@ -34,6 +38,8 @@ class ThemeProvider extends ChangeNotifier {
   int get standardGridColumns => _standardGridColumns;
   bool get showAppLabels => _showAppLabels;
   String get groqApiKey => _groqApiKeyVal;
+  String get groqAiModel => _groqAiModelVal;
+  String get groqWhisperModel => _groqWhisperModelVal;
   List<String> get pinnedApps => List.unmodifiable(_pinnedApps);
   bool get hasSeenWalkthrough => _hasSeenWalkthrough;
   bool get isInitialized => _initialized;
@@ -57,6 +63,9 @@ class ThemeProvider extends ChangeNotifier {
     _standardGridColumns = prefs.getInt(_standardColumnsKey) ?? 4;
     _showAppLabels = prefs.getBool(_showAppLabelsKey) ?? true;
     _groqApiKeyVal = prefs.getString(_groqApiKey) ?? '';
+    _groqAiModelVal = prefs.getString(_groqAiModelKey) ?? 'groq/compound';
+    _groqWhisperModelVal =
+        prefs.getString(_groqWhisperModelKey) ?? 'whisper-large-v3';
     _pinnedApps = prefs.getStringList(_pinnedAppsKey) ?? [];
     _hasSeenWalkthrough = prefs.getBool(_walkthroughKey) ?? false;
     _seenThemeTips = (prefs.getStringList(_seenThemeTipsKey) ?? []).toSet();
@@ -110,6 +119,18 @@ class ThemeProvider extends ChangeNotifier {
 
   void setGroqApiKey(String key) {
     _groqApiKeyVal = key.trim();
+    notifyListeners();
+    _save();
+  }
+
+  void setGroqAiModel(String model) {
+    _groqAiModelVal = model.trim();
+    notifyListeners();
+    _save();
+  }
+
+  void setGroqWhisperModel(String model) {
+    _groqWhisperModelVal = model.trim();
     notifyListeners();
     _save();
   }
@@ -171,6 +192,8 @@ class ThemeProvider extends ChangeNotifier {
     await prefs.setInt(_standardColumnsKey, _standardGridColumns);
     await prefs.setBool(_showAppLabelsKey, _showAppLabels);
     await prefs.setString(_groqApiKey, _groqApiKeyVal);
+    await prefs.setString(_groqAiModelKey, _groqAiModelVal);
+    await prefs.setString(_groqWhisperModelKey, _groqWhisperModelVal);
     await prefs.setStringList(_pinnedAppsKey, _pinnedApps);
     await prefs.setBool(_walkthroughKey, _hasSeenWalkthrough);
     await prefs.setStringList(_seenThemeTipsKey, _seenThemeTips.toList());
