@@ -22,8 +22,7 @@ class GroqService {
   static const String defaultAudioModel = 'whisper-large-v3';
 
   /// >>> PROVIDE YOUR GROQ API KEY HERE <<<
-  static const String apiKeyInCode =
-      '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';
+  static const String apiKeyInCode = '';
 
   /// Helper to resolve the clean active API key
   static String getEffectiveApiKey(String? apiKey) {
@@ -141,12 +140,11 @@ class GroqService {
         request.fields['language'] = language.trim();
       }
 
-      request.files.add(
-        await http.MultipartFile.fromPath('file', filePath),
-      );
+      request.files.add(await http.MultipartFile.fromPath('file', filePath));
 
-      final streamedResponse =
-          await request.send().timeout(const Duration(seconds: 30));
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
