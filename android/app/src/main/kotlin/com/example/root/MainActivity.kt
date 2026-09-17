@@ -21,6 +21,8 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.CalendarContract
 import android.provider.Settings
+import android.media.AudioManager
+import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -63,6 +65,83 @@ class MainActivity: FlutterActivity() {
                 "lockScreen" -> {
                     lockScreen()
                     result.success(null)
+                }
+                "isOverlayPermissionGranted" -> {
+                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(this)
+                    } else {
+                        true
+                    }
+                    result.success(granted)
+                }
+                "requestOverlayPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        startActivity(intent)
+                    }
+                    result.success(null)
+                }
+                "startVolumeOverlay" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                            result.success(false)
+                        } else {
+                            val intent = Intent(this, VolumeOverlayService::class.java)
+                            startService(intent)
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        result.success(false)
+                    }
+                }
+                "stopVolumeOverlay" -> {
+                    try {
+                        val intent = Intent(this, VolumeOverlayService::class.java)
+                        stopService(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        result.success(false)
+                    }
+                }
+                "isVolumeOverlayRunning" -> {
+                    result.success(VolumeOverlayService.isRunning)
+                }
+                "getVolumeLevels" -> {
+                    val am = getSystemService(AUDIO_SERVICE) as AudioManager
+                    val map = hashMapOf(
+                        "media" to am.getStreamVolume(AudioManager.STREAM_MUSIC),
+                        "mediaMax" to am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                        "ring" to am.getStreamVolume(AudioManager.STREAM_RING),
+                        "ringMax" to am.getStreamMaxVolume(AudioManager.STREAM_RING),
+                        "notification" to am.getStreamVolume(AudioManager.STREAM_NOTIFICATION),
+                        "notificationMax" to am.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION),
+                        "alarm" to am.getStreamVolume(AudioManager.STREAM_ALARM),
+                        "alarmMax" to am.getStreamMaxVolume(AudioManager.STREAM_ALARM),
+                        "call" to am.getStreamVolume(AudioManager.STREAM_VOICE_CALL),
+                        "callMax" to am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+                    )
+                    result.success(map)
+                }
+                "setVolumeLevel" -> {
+                    val am = getSystemService(AUDIO_SERVICE) as AudioManager
+                    val streamName = call.argument<String>("stream") ?: "media"
+                    val level = call.argument<Int>("level") ?: 0
+                    val streamType = when (streamName) {
+                        "media" -> AudioManager.STREAM_MUSIC
+                        "ring" -> AudioManager.STREAM_RING
+                        "notification" -> AudioManager.STREAM_NOTIFICATION
+                        "alarm" -> AudioManager.STREAM_ALARM
+                        "call" -> AudioManager.STREAM_VOICE_CALL
+                        else -> AudioManager.STREAM_MUSIC
+                    }
+                    am.setStreamVolume(streamType, level, 0)
+                    result.success(true)
                 }
                 else -> {
                     result.notImplemented()

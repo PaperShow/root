@@ -9,8 +9,13 @@ import '../utils/app_fonts.dart';
 
 class HabitTrackerScreen extends StatefulWidget {
   final VoidCallback? onSwipeRight;
+  final bool isEmbedded;
 
-  const HabitTrackerScreen({super.key, this.onSwipeRight});
+  const HabitTrackerScreen({
+    super.key,
+    this.onSwipeRight,
+    this.isEmbedded = false,
+  });
 
   @override
   State<HabitTrackerScreen> createState() => _HabitTrackerScreenState();
@@ -66,24 +71,26 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   child: Row(
                     children: [
-                      InkWell(
-                        onTap: widget.onSwipeRight,
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: cardDark,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: surfaceBorder),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back_ios_new,
-                            color: Colors.white,
-                            size: 14,
+                      if (!widget.isEmbedded) ...[
+                        InkWell(
+                          onTap: widget.onSwipeRight ?? () => Navigator.of(context).maybePop(),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: cardDark,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: surfaceBorder),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back_ios_new,
+                              color: Colors.white,
+                              size: 14,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 14),
+                        const SizedBox(width: 14),
+                      ],
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

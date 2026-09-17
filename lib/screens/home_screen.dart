@@ -14,12 +14,18 @@ import '../widgets/minimal_clock.dart';
 import '../widgets/status_strip.dart';
 import 'habit_tracker_screen.dart';
 import 'settings_screen.dart';
+import 'super_app_hub_screen.dart';
 import 'walkthrough_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
+  final bool standaloneTool;
 
-  const HomeScreen({super.key, required this.themeProvider});
+  const HomeScreen({
+    super.key,
+    required this.themeProvider,
+    this.standaloneTool = false,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -95,11 +101,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       apps.sort(
           (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
+      if (!mounted) return;
       setState(() {
         _apps = apps;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
       });
@@ -135,7 +143,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    if (!_isDefaultLauncher && !_userSkippedSetup) {
+    final canPop = Navigator.of(context).canPop();
+    if (!_isDefaultLauncher && !_userSkippedSetup && !widget.standaloneTool && !canPop) {
       return _buildSetupScreen();
     }
 
@@ -149,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return ChangeNotifierProvider<HabitProvider>.value(
       value: _habitProvider,
       child: PopScope(
-        canPop: false,
+        canPop: canPop,
         child: Scaffold(
           backgroundColor: Colors.black,
           body: PageView(
@@ -281,6 +290,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
+                              icon: const Icon(
+                                Icons.grid_view_rounded,
+                                color: Color(0xFF69FF94),
+                              ),
+                              tooltip: 'Super App Hub',
+                              onPressed: () {
+                                if (Navigator.of(context).canPop()) {
+                                  Navigator.of(context).pop();
+                                } else {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => SuperAppHubScreen(
+                                          themeProvider: widget.themeProvider),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                            IconButton(
                               icon: Icon(
                                 Icons.format_list_bulleted,
                                 color: const Color(0xFF69FF94).withValues(alpha: 0.9),
@@ -392,6 +420,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 16,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => SuperAppHubScreen(themeProvider: widget.themeProvider),
+                        ),
+                      );
+                    }
+                  },
+                  child: Text(
+                    '← back to super app hub',
+                    style: TextStyle(
+                      color: const Color(0xFF69FF94).withValues(alpha: 0.85),
+                      fontSize: 15,
                     ),
                   ),
                 ),

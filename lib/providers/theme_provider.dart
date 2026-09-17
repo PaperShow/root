@@ -16,7 +16,9 @@ class ThemeProvider extends ChangeNotifier {
   static const _groqWhisperModelKey = 'groq_whisper_model';
   static const _walkthroughKey = 'has_seen_walkthrough';
   static const _seenThemeTipsKey = 'seen_theme_tips';
+  static const _appThemeModeKey = 'app_theme_mode';
 
+  ThemeMode _appThemeMode = ThemeMode.dark;
   LauncherThemeType _currentTheme = LauncherThemeType.terminal;
   bool _isIntentWallEnabled = true;
   bool _isIconsEnabled = true;
@@ -31,6 +33,7 @@ class ThemeProvider extends ChangeNotifier {
   Set<String> _seenThemeTips = {};
   bool _initialized = false;
 
+  ThemeMode get appThemeMode => _appThemeMode;
   LauncherThemeType get currentTheme => _currentTheme;
   bool get isIntentWallEnabled => _isIntentWallEnabled;
   bool get isIconsEnabled => _isIconsEnabled;
@@ -70,6 +73,13 @@ class ThemeProvider extends ChangeNotifier {
     _hasSeenWalkthrough = prefs.getBool(_walkthroughKey) ?? false;
     _seenThemeTips = (prefs.getStringList(_seenThemeTipsKey) ?? []).toSet();
 
+    final modeIndex = prefs.getInt(_appThemeModeKey);
+    if (modeIndex != null && modeIndex >= 0 && modeIndex < ThemeMode.values.length) {
+      _appThemeMode = ThemeMode.values[modeIndex];
+    } else {
+      _appThemeMode = ThemeMode.dark;
+    }
+
     _initialized = true;
     notifyListeners();
   }
@@ -83,6 +93,28 @@ class ThemeProvider extends ChangeNotifier {
   void nextTheme() {
     final nextIndex = (_currentTheme.index + 1) % LauncherThemeType.values.length;
     _currentTheme = LauncherThemeType.values[nextIndex];
+    notifyListeners();
+    _save();
+  }
+
+  void setAppThemeMode(ThemeMode mode) {
+    _appThemeMode = mode;
+    notifyListeners();
+    _save();
+  }
+
+  void cycleAppThemeMode() {
+    switch (_appThemeMode) {
+      case ThemeMode.dark:
+        _appThemeMode = ThemeMode.light;
+        break;
+      case ThemeMode.light:
+        _appThemeMode = ThemeMode.system;
+        break;
+      case ThemeMode.system:
+        _appThemeMode = ThemeMode.dark;
+        break;
+    }
     notifyListeners();
     _save();
   }
@@ -197,5 +229,6 @@ class ThemeProvider extends ChangeNotifier {
     await prefs.setStringList(_pinnedAppsKey, _pinnedApps);
     await prefs.setBool(_walkthroughKey, _hasSeenWalkthrough);
     await prefs.setStringList(_seenThemeTipsKey, _seenThemeTips.toList());
+    await prefs.setInt(_appThemeModeKey, _appThemeMode.index);
   }
 }
