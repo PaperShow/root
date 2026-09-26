@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/volume_controller_service.dart';
+import '../styles/app_theme.dart';
 import '../utils/app_fonts.dart';
 
 class VolumeControllerScreen extends StatefulWidget {
@@ -12,10 +13,11 @@ class VolumeControllerScreen extends StatefulWidget {
 
 class _VolumeControllerScreenState extends State<VolumeControllerScreen>
     with WidgetsBindingObserver {
-  static const Color terminalGreen = Color(0xFF69FF94);
-  static const Color pureBlack = Color(0xFF000000);
-  static const Color cardDark = Color(0xFF101010);
-  static const Color surfaceBorder = Color(0xFF222222);
+  AppTheme get theme => AppTheme.of(context);
+  Color get terminalGreen => theme.accent;
+  Color get pureBlack => theme.scaffoldBackground;
+  Color get cardDark => theme.card;
+  Color get surfaceBorder => theme.border;
 
   bool _isOverlayRunning = false;
   bool _hasOverlayPermission = true;
@@ -80,53 +82,87 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
   }
 
   Future<void> _promptOverlayPermission() async {
-    final shouldOpen = await showDialog<bool>(
+    final shouldOpen = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: cardDark,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: surfaceBorder),
+      useRootNavigator: true,
+      backgroundColor: cardDark,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 16,
+          bottom: MediaQuery.of(ctx).padding.bottom + 24,
         ),
-        title: Text(
-          'OVERLAY PERMISSION',
-          style: AppFonts.jetBrainsMono(
-            color: terminalGreen,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: Text(
-          'Android requires "Display over other apps" permission so the floating volume widget can stay accessible over all applications.',
-          style: AppFonts.inter(
-            color: Colors.white.withValues(alpha: 0.8),
-            fontSize: 13,
-            height: 1.4,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(
-              'CANCEL',
-              style: AppFonts.jetBrainsMono(color: Colors.white54),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: terminalGreen,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(
-              'OPEN SETTINGS',
-              style: AppFonts.jetBrainsMono(fontWeight: FontWeight.bold),
+            Text(
+              'OVERLAY PERMISSION',
+              style: AppFonts.jetBrainsMono(
+                color: terminalGreen,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              'Android requires "Display over other apps" permission so the floating volume widget can stay accessible over all applications.',
+              style: AppFonts.inter(
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: Text(
+                      'CANCEL',
+                      style: AppFonts.jetBrainsMono(color: Colors.white54),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: terminalGreen,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: Text(
+                      'OPEN SETTINGS',
+                      style: AppFonts.jetBrainsMono(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
@@ -210,7 +246,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
             // ─── MAIN CONTENT ──────────────────────────────────
             Expanded(
               child: _loading
-                  ? const Center(
+                  ? Center(
                       child: CircularProgressIndicator(color: terminalGreen),
                     )
                   : ListView(

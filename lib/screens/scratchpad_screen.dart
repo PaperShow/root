@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../styles/app_theme.dart';
 import '../utils/app_fonts.dart';
 
 class ScratchpadScreen extends StatefulWidget {
@@ -13,11 +14,6 @@ class ScratchpadScreen extends StatefulWidget {
 }
 
 class _ScratchpadScreenState extends State<ScratchpadScreen> {
-  static const Color terminalGreen = Color(0xFF69FF94);
-  static const Color pureBlack = Color(0xFF000000);
-  static const Color cardDark = Color(0xFF101010);
-  static const Color surfaceBorder = Color(0xFF222222);
-
   static const String _storageKey = 'root_super_app_scratchpad';
   final TextEditingController _controller = TextEditingController();
   bool _saved = true;
@@ -67,42 +63,44 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
   }
 
   void _copyToClipboard() {
+    final theme = AppTheme.of(context);
     Clipboard.setData(ClipboardData(text: _controller.text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: cardDark,
-        content: Text('Copied to clipboard', style: AppFonts.inter(color: Colors.white)),
+        backgroundColor: theme.card,
+        content: Text('Copied to clipboard', style: AppFonts.inter(color: theme.textPrimary)),
         duration: const Duration(seconds: 2),
       ),
     );
   }
 
   void _clearNote() {
+    final theme = AppTheme.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: cardDark,
+        backgroundColor: theme.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: surfaceBorder),
+          side: BorderSide(color: theme.border),
         ),
         title: Text(
           'CLEAR SCRATCHPAD?',
-          style: AppFonts.jetBrainsMono(color: terminalGreen, fontSize: 14, fontWeight: FontWeight.bold),
+          style: AppFonts.jetBrainsMono(color: theme.accent, fontSize: 14, fontWeight: FontWeight.bold),
         ),
         content: Text(
           'All text will be permanently erased.',
-          style: AppFonts.inter(color: Colors.white70, fontSize: 13),
+          style: AppFonts.inter(color: theme.textSecondary, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('CANCEL', style: AppFonts.jetBrainsMono(color: Colors.white54)),
+            child: Text('CANCEL', style: AppFonts.jetBrainsMono(color: theme.textMuted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6B6B),
-              foregroundColor: Colors.black,
+              backgroundColor: theme.expenseCoral,
+              foregroundColor: Colors.white,
             ),
             onPressed: () {
               _controller.clear();
@@ -118,12 +116,13 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = AppTheme.of(context);
     final text = _controller.text;
     final charCount = text.length;
     final wordCount = text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
 
     return Scaffold(
-      backgroundColor: pureBlack,
+      backgroundColor: theme.scaffoldBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -139,13 +138,13 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: cardDark,
+                          color: theme.card,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: surfaceBorder),
+                          border: Border.all(color: theme.border),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.arrow_back_ios_new,
-                          color: Colors.white,
+                          color: theme.textPrimary,
                           size: 14,
                         ),
                       ),
@@ -158,7 +157,7 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
                       Text(
                         '// SCRATCHPAD',
                         style: AppFonts.jetBrainsMono(
-                          color: terminalGreen,
+                          color: theme.accent,
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 2,
@@ -171,7 +170,7 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
                             width: 6,
                             height: 6,
                             decoration: BoxDecoration(
-                              color: _saved ? terminalGreen : Colors.amber,
+                              color: _saved ? theme.accent : Colors.amber,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -179,7 +178,7 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
                           Text(
                             _saved ? 'saved locally' : 'saving...',
                             style: AppFonts.inter(
-                              color: Colors.white.withValues(alpha: 0.4),
+                              color: theme.textMuted,
                               fontSize: 11,
                             ),
                           ),
@@ -189,12 +188,12 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.copy_outlined, color: Colors.white70, size: 20),
+                    icon: Icon(Icons.copy_outlined, color: theme.textSecondary, size: 20),
                     tooltip: 'Copy all',
                     onPressed: _copyToClipboard,
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.white54, size: 20),
+                    icon: Icon(Icons.delete_outline, color: theme.textMuted, size: 20),
                     tooltip: 'Clear',
                     onPressed: _clearNote,
                   ),
@@ -205,28 +204,28 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
             // EDITOR
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: EdgeInsets.fromLTRB(20, 0, 20, widget.isEmbedded ? 80 : 16),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: cardDark,
+                    color: theme.card,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: surfaceBorder),
+                    border: Border.all(color: theme.border),
                   ),
                   child: TextField(
                     controller: _controller,
                     maxLines: null,
                     expands: true,
                     style: AppFonts.jetBrainsMono(
-                      color: Colors.white,
+                      color: theme.textPrimary,
                       fontSize: 14,
                       height: 1.5,
                     ),
-                    cursorColor: terminalGreen,
+                    cursorColor: theme.accent,
                     decoration: InputDecoration(
                       hintText: '# Write quick thoughts, todos, links, code snippets...\nAuto-saves as you type.',
                       hintStyle: AppFonts.jetBrainsMono(
-                        color: Colors.white24,
+                        color: theme.textMuted.withValues(alpha: 0.6),
                         fontSize: 13,
                         height: 1.5,
                       ),
@@ -238,22 +237,23 @@ class _ScratchpadScreenState extends State<ScratchpadScreen> {
             ),
 
             // FOOTER STATS
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '$wordCount words • $charCount chars',
-                    style: AppFonts.jetBrainsMono(color: Colors.white38, fontSize: 11),
-                  ),
-                  Text(
-                    'PERSISTENT STORAGE',
-                    style: AppFonts.jetBrainsMono(color: terminalGreen.withValues(alpha: 0.7), fontSize: 10),
-                  ),
-                ],
+            if (!widget.isEmbedded)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$wordCount words • $charCount chars',
+                      style: AppFonts.jetBrainsMono(color: theme.textMuted, fontSize: 11),
+                    ),
+                    Text(
+                      'PERSISTENT STORAGE',
+                      style: AppFonts.jetBrainsMono(color: theme.accent.withValues(alpha: 0.8), fontSize: 10),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ),

@@ -28,28 +28,28 @@ class TerminalOutput {
   }) : timestamp = timestamp ?? DateTime.now();
 
   TerminalOutput.error(String text)
-      : this(text: text, color: const Color(0xFFFF6B6B), isBold: true);
+    : this(text: text, color: const Color(0xFFFF6B6B), isBold: true);
 
   TerminalOutput.success(String text)
-      : this(text: text, color: const Color(0xFF69FF94));
+    : this(text: text, color: const Color(0xFF69FF94));
 
   TerminalOutput.info(String text)
-      : this(text: text, color: const Color(0xFF82AAFF));
+    : this(text: text, color: const Color(0xFF82AAFF));
 
   TerminalOutput.system(String text)
-      : this(text: text, color: Colors.green.withValues(alpha: 0.6));
+    : this(text: text, color: Colors.green.withValues(alpha: 0.6));
 
   TerminalOutput.result(String text)
-      : this(text: text, color: const Color(0xFFFFD580), isBold: true);
+    : this(text: text, color: const Color(0xFFFFD580), isBold: true);
 
   TerminalOutput.dim(String text)
-      : this(text: text, color: Colors.white.withValues(alpha: 0.35));
+    : this(text: text, color: Colors.white.withValues(alpha: 0.35));
 
   TerminalOutput.ai(String text)
-      : this(text: text, color: const Color(0xFF69FF94), isBold: false);
+    : this(text: text, color: const Color(0xFF69FF94), isBold: false);
 
   TerminalOutput.aiHeader(String text)
-      : this(text: text, color: const Color(0xFF69FF94), isBold: true);
+    : this(text: text, color: const Color(0xFF69FF94), isBold: true);
 }
 
 /// A contact entry with name and phone number for display in the terminal.
@@ -62,8 +62,8 @@ class TerminalContact {
 
 /// The mode the terminal is currently in.
 enum TerminalMode {
-  normal,         // Regular app search + command mode
-  contactPicker,  // Showing contact list for call/msg
+  normal, // Regular app search + command mode
+  contactPicker, // Showing contact list for call/msg
 }
 
 /// Service that parses and executes terminal power commands & Groq AI queries.
@@ -110,10 +110,33 @@ class TerminalCommandService {
   String? getCommandPrefix(String input) {
     final trimmed = input.trim().toLowerCase();
     final commands = [
-      'call', 'msg', 'note', 'search', 'goog', 'calc', 
-      'ai', 'groq', 'setkey', 'model', 'models', 'help', 'notes', 'clear', 'sys',
-      'habits', 'habit', 'done', 'check', 'undone', 'uncheck', 'addhabit',
-      'voice', 'rec', 'mic', 'listen', 'whisper'
+      'call',
+      'msg',
+      'note',
+      'search',
+      'goog',
+      'calc',
+      'ai',
+      'groq',
+      'setkey',
+      'model',
+      'models',
+      'help',
+      'notes',
+      'clear',
+      'sys',
+      'habits',
+      'habit',
+      'done',
+      'check',
+      'undone',
+      'uncheck',
+      'addhabit',
+      'voice',
+      'rec',
+      'mic',
+      'listen',
+      'whisper',
     ];
     for (final cmd in commands) {
       if (trimmed == cmd || trimmed.startsWith('$cmd ')) {
@@ -186,7 +209,9 @@ class TerminalCommandService {
       final key = trimmed.substring(7).trim();
       themeProvider.setGroqApiKey(key);
       return [
-        TerminalOutput.system('> setkey ${'*' * (key.length > 8 ? 8 : key.length)}'),
+        TerminalOutput.system(
+          '> setkey ${'*' * (key.length > 8 ? 8 : key.length)}',
+        ),
         TerminalOutput.success('  ✓ Groq API key updated successfully!'),
       ];
     }
@@ -237,7 +262,9 @@ class TerminalCommandService {
 
     if (lower == 'ai' || lower == 'groq') {
       return [
-        TerminalOutput.info('┌─── GROQ AI CHATBOT (${themeProvider.groqAiModel}) ───┐'),
+        TerminalOutput.info(
+          '┌─── GROQ AI CHATBOT (${themeProvider.groqAiModel}) ───┐',
+        ),
         TerminalOutput.ai('  Ask any question directly in terminal!'),
         TerminalOutput.dim('  Powered by Groq Compound AI & Whisper STT'),
         TerminalOutput.dim('  Usage: ai <your question> or type directly'),
@@ -250,15 +277,23 @@ class TerminalCommandService {
     if (lower == 'model' || lower == 'models') {
       return [
         TerminalOutput.info('┌─── GROQ AI CONFIGURATION ────────┐'),
-        TerminalOutput.ai('  Active AI Model:      ${themeProvider.groqAiModel}'),
-        TerminalOutput.ai('  Active Whisper Model: ${themeProvider.groqWhisperModel}'),
+        TerminalOutput.ai(
+          '  Active AI Model:      ${themeProvider.groqAiModel}',
+        ),
+        TerminalOutput.ai(
+          '  Active Whisper Model: ${themeProvider.groqWhisperModel}',
+        ),
         TerminalOutput.dim('  Available Models:'),
         TerminalOutput.system('    • groq/compound (default - agentic system)'),
-        TerminalOutput.system('    • groq/compound-mini (fast agentic compound)'),
+        TerminalOutput.system(
+          '    • groq/compound-mini (fast agentic compound)',
+        ),
         TerminalOutput.system('    • openai/gpt-oss-120b (GPT-OSS 120B)'),
         TerminalOutput.system('    • openai/gpt-oss-20b (GPT-OSS 20B)'),
         TerminalOutput.system('    • llama-3.3-70b-versatile'),
-        TerminalOutput.dim('  Usage: model <compound | mini | gpt120 | gpt20 | llama | custom>'),
+        TerminalOutput.dim(
+          '  Usage: model <compound | mini | gpt120 | gpt20 | llama | custom>',
+        ),
         TerminalOutput.info('└───────────────────────────────────┘'),
       ];
     }
@@ -322,12 +357,12 @@ class TerminalCommandService {
     final String displayName = activeModel == 'groq/compound'
         ? 'Groq Compound'
         : activeModel == 'groq/compound-mini'
-            ? 'Groq Compound Mini'
-            : activeModel == 'openai/gpt-oss-120b'
-                ? 'GPT-OSS 120B'
-                : activeModel == 'openai/gpt-oss-20b'
-                    ? 'GPT-OSS 20B'
-                    : activeModel;
+        ? 'Groq Compound Mini'
+        : activeModel == 'openai/gpt-oss-120b'
+        ? 'GPT-OSS 120B'
+        : activeModel == 'openai/gpt-oss-20b'
+        ? 'GPT-OSS 20B'
+        : activeModel;
 
     final output = <TerminalOutput>[
       TerminalOutput.system('> ai $prompt'),
@@ -341,7 +376,9 @@ class TerminalCommandService {
     );
 
     // Format response into terminal lines
-    output.add(TerminalOutput.aiHeader('┌─── GROQ RESPONSE ($displayName) ─────'));
+    output.add(
+      TerminalOutput.aiHeader('┌─── GROQ RESPONSE ($displayName) ─────'),
+    );
 
     final lines = response.split('\n');
     for (final line in lines) {
@@ -352,7 +389,9 @@ class TerminalCommandService {
       }
     }
 
-    output.add(TerminalOutput.aiHeader('└──────────────────────────────────────'));
+    output.add(
+      TerminalOutput.aiHeader('└──────────────────────────────────────'),
+    );
     return output;
   }
 
@@ -403,8 +442,8 @@ class TerminalCommandService {
     final batteryColor = batteryLevel > 50
         ? const Color(0xFF69FF94)
         : batteryLevel > 20
-            ? const Color(0xFFFFD580)
-            : const Color(0xFFFF6B6B);
+        ? const Color(0xFFFFD580)
+        : const Color(0xFFFF6B6B);
 
     String networkDisplay;
     if (networkType == 'wifi') {
@@ -443,43 +482,55 @@ class TerminalCommandService {
     final host = deviceModel.toLowerCase().replaceAll(' ', '_');
 
     output.add(TerminalOutput.dim(''));
-    output.add(TerminalOutput(
-      text: '  root@$host',
-      color: const Color(0xFF69FF94),
-      isBold: true,
-    ));
+    output.add(
+      TerminalOutput(
+        text: '  root@$host',
+        color: const Color(0xFF69FF94),
+        isBold: true,
+      ),
+    );
     output.add(TerminalOutput.dim('  ${'─' * (7 + host.length)}'));
 
-    output.add(TerminalOutput(
-      text: '  os      android $androidVersion',
-      color: const Color(0xFFE0E0E0),
-    ));
+    output.add(
+      TerminalOutput(
+        text: '  os      android $androidVersion',
+        color: const Color(0xFFE0E0E0),
+      ),
+    );
 
-    output.add(TerminalOutput(
-      text: '  bat     $batteryLevel% [$batteryState] $batteryBar',
-      color: batteryColor,
-    ));
+    output.add(
+      TerminalOutput(
+        text: '  bat     $batteryLevel% [$batteryState] $batteryBar',
+        color: batteryColor,
+      ),
+    );
 
-    output.add(TerminalOutput(
-      text: '  net     $networkDisplay',
-      color: networkType == 'offline'
-          ? const Color(0xFFFF6B6B)
-          : const Color(0xFFE0E0E0),
-    ));
+    output.add(
+      TerminalOutput(
+        text: '  net     $networkDisplay',
+        color: networkType == 'offline'
+            ? const Color(0xFFFF6B6B)
+            : const Color(0xFFE0E0E0),
+      ),
+    );
 
-    output.add(TerminalOutput(
-      text: '  screen  $screenTimeDisplay',
-      color: screenTimeMinutes < 0
-          ? Colors.white.withValues(alpha: 0.35)
-          : const Color(0xFFE0E0E0),
-    ));
+    output.add(
+      TerminalOutput(
+        text: '  screen  $screenTimeDisplay',
+        color: screenTimeMinutes < 0
+            ? Colors.white.withValues(alpha: 0.35)
+            : const Color(0xFFE0E0E0),
+      ),
+    );
 
-    output.add(TerminalOutput(
-      text: '  cal     $calendarDisplay',
-      color: nextEventTitle != null
-          ? const Color(0xFFFFD580)
-          : Colors.white.withValues(alpha: 0.35),
-    ));
+    output.add(
+      TerminalOutput(
+        text: '  cal     $calendarDisplay',
+        color: nextEventTitle != null
+            ? const Color(0xFFFFD580)
+            : Colors.white.withValues(alpha: 0.35),
+      ),
+    );
 
     output.add(TerminalOutput.dim(''));
 
@@ -493,26 +544,82 @@ class TerminalCommandService {
       TerminalOutput.info('┌──────────────────────────────────────────────┐'),
       TerminalOutput.info('│            TERMINAL QUICK ACTIONS            │'),
       TerminalOutput.info('├──────────────────────────────────────────────┤'),
-      TerminalOutput(text: '│ ai [query]        ask Groq AI                │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ voice / mic       record audio (Groq Whisper)│', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ model [name]      switch Groq AI model       │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ habits            list daily habits          │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ done [habit]      mark habit done            │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ undone [habit]    uncheck habit              │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ addhabit [name]   create habit               │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ habit stats       habit telemetry            │', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '│ call              list contacts              │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ call [name]       direct dial                │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ msg [name] [text] send sms                   │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ note [text]       save a note                │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ notes             view all notes             │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ search [query]    google search              │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ calc [expr]       evaluate math              │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ sys               system info                │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ clear             clear terminal             │', color: const Color(0xFFFFD580)),
-      TerminalOutput(text: '│ help              show this help             │', color: const Color(0xFFFFD580)),
+      TerminalOutput(
+        text: '│ ai [query]        ask Groq AI                │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ voice / mic       record audio (Groq Whisper)│',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ model [name]      switch Groq AI model       │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ habits            list daily habits          │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ done [habit]      mark habit done            │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ undone [habit]    uncheck habit              │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ addhabit [name]   create habit               │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ habit stats       habit telemetry            │',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '│ call              list contacts              │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ call [name]       direct dial                │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ msg [name] [text] send sms                   │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ note [text]       save a note                │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ notes             view all notes             │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ search [query]    google search              │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ calc [expr]       evaluate math              │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ sys               system info                │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ clear             clear terminal             │',
+        color: const Color(0xFFFFD580),
+      ),
+      TerminalOutput(
+        text: '│ help              show this help             │',
+        color: const Color(0xFFFFD580),
+      ),
       TerminalOutput.info('└──────────────────────────────────────────────┘'),
-      TerminalOutput.aiHeader('  ★ Tap the mic icon or type a query directly to talk to Groq!'),
+      TerminalOutput.aiHeader(
+        '  ★ Tap the mic icon or type a query directly to talk to Groq!',
+      ),
     ];
   }
 
@@ -536,7 +643,10 @@ class TerminalCommandService {
 
       String formatted = result == result.truncateToDouble()
           ? result.toInt().toString()
-          : result.toStringAsFixed(6).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+          : result
+                .toStringAsFixed(6)
+                .replaceAll(RegExp(r'0+$'), '')
+                .replaceAll(RegExp(r'\.$'), '');
 
       return [
         TerminalOutput.system('> calc $expression'),
@@ -557,7 +667,9 @@ class TerminalCommandService {
       return [TerminalOutput.error('usage: search <query>')];
     }
 
-    final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(query)}');
+    final url = Uri.parse(
+      'https://www.google.com/search?q=${Uri.encodeComponent(query)}',
+    );
     launchUrl(url, mode: LaunchMode.externalApplication);
 
     return [
@@ -588,9 +700,7 @@ class TerminalCommandService {
         TerminalOutput.success('  ✓ note saved'),
       ];
     } catch (e) {
-      return [
-        TerminalOutput.error('  error saving note: $e'),
-      ];
+      return [TerminalOutput.error('  error saving note: $e')];
     }
   }
 
@@ -610,13 +720,19 @@ class TerminalCommandService {
         TerminalOutput.info('┌─── NOTES ─────────────────────────┐'),
       ];
 
-      final recent = lines.length > 10 ? lines.sublist(lines.length - 10) : lines;
+      final recent = lines.length > 10
+          ? lines.sublist(lines.length - 10)
+          : lines;
       for (final line in recent) {
-        output.add(TerminalOutput(text: '  $line', color: const Color(0xFFE0E0E0)));
+        output.add(
+          TerminalOutput(text: '  $line', color: const Color(0xFFE0E0E0)),
+        );
       }
 
       if (lines.length > 10) {
-        output.add(TerminalOutput.system('  ... and ${lines.length - 10} more'));
+        output.add(
+          TerminalOutput.system('  ... and ${lines.length - 10} more'),
+        );
       }
 
       output.add(TerminalOutput.info('└───────────────────────────────────┘'));
@@ -642,15 +758,19 @@ class TerminalCommandService {
     }
 
     if (!_contactsLoaded) {
-      final contacts = await FlutterContacts.getContacts(withProperties: true);
+      final contacts = await FlutterContacts.getAll();
       _cachedContacts = contacts
           .where((c) => c.phones.isNotEmpty)
-          .map((c) => TerminalContact(
-                name: c.displayName,
-                phone: c.phones.first.number,
-              ))
+          .map(
+            (c) => TerminalContact(
+              name: c.name!.first!,
+              phone: c.phones.first.number,
+            ),
+          )
           .toList();
-      _cachedContacts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      _cachedContacts.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
       _contactsLoaded = true;
     }
 
@@ -698,14 +818,19 @@ class TerminalCommandService {
     ];
 
     for (int i = 0; i < matches.length && i < 10; i++) {
-      output.add(TerminalOutput(
-        text: '  ${i + 1}. ${matches[i].name.toLowerCase()} — ${matches[i].phone}',
-        color: const Color(0xFFE0E0E0),
-      ));
+      output.add(
+        TerminalOutput(
+          text:
+              '  ${i + 1}. ${matches[i].name.toLowerCase()} — ${matches[i].phone}',
+          color: const Color(0xFFE0E0E0),
+        ),
+      );
     }
 
     if (matches.length > 10) {
-      output.add(TerminalOutput.system('  ... and ${matches.length - 10} more'));
+      output.add(
+        TerminalOutput.system('  ... and ${matches.length - 10} more'),
+      );
     }
 
     return output;
@@ -715,7 +840,9 @@ class TerminalCommandService {
     final phoneUrl = Uri.parse('tel:${contact.phone}');
     await launchUrl(phoneUrl);
     return [
-      TerminalOutput.success('  calling ${contact.name.toLowerCase()} (${contact.phone})...'),
+      TerminalOutput.success(
+        '  calling ${contact.name.toLowerCase()} (${contact.phone})...',
+      ),
     ];
   }
 
@@ -731,7 +858,7 @@ class TerminalCommandService {
     }
 
     final words = input.split(' ');
-    
+
     TerminalContact? bestMatch;
     String message = '';
 
@@ -770,7 +897,9 @@ class TerminalCommandService {
       ];
     }
 
-    final smsUrl = Uri.parse('sms:${bestMatch.phone}?body=${Uri.encodeComponent(message)}');
+    final smsUrl = Uri.parse(
+      'sms:${bestMatch.phone}?body=${Uri.encodeComponent(message)}',
+    );
     await launchUrl(smsUrl);
 
     return [
@@ -802,7 +931,9 @@ class TerminalCommandService {
     final total = progress['total'] ?? 0;
 
     final output = <TerminalOutput>[
-      TerminalOutput.aiHeader('┌─── HABITS ($comp/$total DONE TODAY) ─────────'),
+      TerminalOutput.aiHeader(
+        '┌─── HABITS ($comp/$total DONE TODAY) ─────────',
+      ),
     ];
 
     for (final h in habits) {
@@ -810,24 +941,43 @@ class TerminalCommandService {
       final streak = provider.getStreak(h);
       final check = isDone ? '[✓]' : '[ ]';
       final nameStr = h.name.padRight(16);
-      final nameDisplay = nameStr.length > 16 ? '${nameStr.substring(0, 14)}..' : nameStr;
+      final nameDisplay = nameStr.length > 16
+          ? '${nameStr.substring(0, 14)}..'
+          : nameStr;
 
-      output.add(TerminalOutput(
-        text: '  $check $nameDisplay 🔥 ${streak}d streak  [${h.category}]',
-        color: isDone ? const Color(0xFF69FF94) : Colors.white.withValues(alpha: 0.6),
-        isBold: isDone,
-      ));
+      output.add(
+        TerminalOutput(
+          text: '  $check $nameDisplay 🔥 ${streak}d streak  [${h.category}]',
+          color: isDone
+              ? const Color(0xFF69FF94)
+              : Colors.white.withValues(alpha: 0.6),
+          isBold: isDone,
+        ),
+      );
     }
 
-    output.add(TerminalOutput.aiHeader('├──────────────────────────────────────'));
-    output.add(TerminalOutput.dim('  Commands: done <name> | undone <name> | addhabit <name>'));
-    output.add(TerminalOutput.aiHeader('└──────────────────────────────────────'));
+    output.add(
+      TerminalOutput.aiHeader('├──────────────────────────────────────'),
+    );
+    output.add(
+      TerminalOutput.dim(
+        '  Commands: done <name> | undone <name> | addhabit <name>',
+      ),
+    );
+    output.add(
+      TerminalOutput.aiHeader('└──────────────────────────────────────'),
+    );
     return output;
   }
 
-  List<TerminalOutput> _executeHabitDone(String query, HabitProvider? provider) {
-    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
-    if (query.isEmpty) return [TerminalOutput.error('usage: done <habit_name>')];
+  List<TerminalOutput> _executeHabitDone(
+    String query,
+    HabitProvider? provider,
+  ) {
+    if (provider == null)
+      return [TerminalOutput.error('  habit tracker unavailable')];
+    if (query.isEmpty)
+      return [TerminalOutput.error('usage: done <habit_name>')];
 
     final updated = provider.markHabitDoneByName(query);
     if (updated == null) {
@@ -843,14 +993,23 @@ class TerminalCommandService {
 
     return [
       TerminalOutput.system('> done ${updated.name}'),
-      TerminalOutput.success('  ✓ Marked ${updated.name} completed for today! (🔥 ${streak}d streak)'),
-      TerminalOutput.info('  [HABITS: ${prog['completed']}/${prog['total']} DONE]'),
+      TerminalOutput.success(
+        '  ✓ Marked ${updated.name} completed for today! (🔥 ${streak}d streak)',
+      ),
+      TerminalOutput.info(
+        '  [HABITS: ${prog['completed']}/${prog['total']} DONE]',
+      ),
     ];
   }
 
-  List<TerminalOutput> _executeHabitUndone(String query, HabitProvider? provider) {
-    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
-    if (query.isEmpty) return [TerminalOutput.error('usage: undone <habit_name>')];
+  List<TerminalOutput> _executeHabitUndone(
+    String query,
+    HabitProvider? provider,
+  ) {
+    if (provider == null)
+      return [TerminalOutput.error('  habit tracker unavailable')];
+    if (query.isEmpty)
+      return [TerminalOutput.error('usage: undone <habit_name>')];
 
     final updated = provider.markHabitUndoneByName(query);
     if (updated == null) {
@@ -867,24 +1026,31 @@ class TerminalCommandService {
         text: '  ↩ Unchecked ${updated.name} for today',
         color: Colors.white.withValues(alpha: 0.7),
       ),
-      TerminalOutput.info('  [HABITS: ${prog['completed']}/${prog['total']} DONE]'),
+      TerminalOutput.info(
+        '  [HABITS: ${prog['completed']}/${prog['total']} DONE]',
+      ),
     ];
   }
 
   List<TerminalOutput> _executeHabitAdd(String query, HabitProvider? provider) {
-    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
-    if (query.isEmpty) return [TerminalOutput.error('usage: addhabit <habit_name>')];
+    if (provider == null)
+      return [TerminalOutput.error('  habit tracker unavailable')];
+    if (query.isEmpty)
+      return [TerminalOutput.error('usage: addhabit <habit_name>')];
 
     final newHabit = provider.addHabitFromCli(query);
     return [
       TerminalOutput.system('> addhabit ${newHabit.name}'),
       TerminalOutput.success('  ✓ Created new habit: ${newHabit.name} [DAILY]'),
-      TerminalOutput.info('  Swipe left from terminal to customize time or category!'),
+      TerminalOutput.info(
+        '  Swipe left from terminal to customize time or category!',
+      ),
     ];
   }
 
   List<TerminalOutput> _executeHabitStats(HabitProvider? provider) {
-    if (provider == null) return [TerminalOutput.error('  habit tracker unavailable')];
+    if (provider == null)
+      return [TerminalOutput.error('  habit tracker unavailable')];
 
     final habits = provider.habits;
     final prog = provider.getTodayProgress();
@@ -902,10 +1068,22 @@ class TerminalCommandService {
 
     return [
       TerminalOutput.aiHeader('┌─── HABIT TELEMETRY ─────────────────'),
-      TerminalOutput(text: '  Today\'s Progress:  $percent% ($comp/$total completed)', color: const Color(0xFF69FF94)),
-      TerminalOutput(text: '  Active Habits:     $total tracked', color: Colors.white),
-      TerminalOutput(text: '  Total Commits:     $totalLifetimeCommits completions', color: Colors.white),
-      TerminalOutput(text: '  Best Streak:       🔥 $highestStreak days', color: const Color(0xFFFFD580)),
+      TerminalOutput(
+        text: '  Today\'s Progress:  $percent% ($comp/$total completed)',
+        color: const Color(0xFF69FF94),
+      ),
+      TerminalOutput(
+        text: '  Active Habits:     $total tracked',
+        color: Colors.white,
+      ),
+      TerminalOutput(
+        text: '  Total Commits:     $totalLifetimeCommits completions',
+        color: Colors.white,
+      ),
+      TerminalOutput(
+        text: '  Best Streak:       🔥 $highestStreak days',
+        color: const Color(0xFFFFD580),
+      ),
       TerminalOutput.aiHeader('└─────────────────────────────────────'),
     ];
   }

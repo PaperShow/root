@@ -44,10 +44,11 @@ class ExpenseProvider extends ChangeNotifier {
         final List<dynamic> decoded = jsonDecode(rawData);
         _items = decoded
             .map((item) => ExpenseItem.fromMap(Map<String, dynamic>.from(item as Map)))
+            .where((item) => !item.id.startsWith('sample-'))
             .toList();
         _items.sort((a, b) => b.date.compareTo(a.date));
       } else {
-        _items = _generateInitialSamples();
+        _items = [];
       }
 
       // Load debts / lending
@@ -56,10 +57,11 @@ class ExpenseProvider extends ChangeNotifier {
         final List<dynamic> decodedDebts = jsonDecode(rawDebts);
         _debts = decodedDebts
             .map((d) => DebtItem.fromMap(Map<String, dynamic>.from(d as Map)))
+            .where((d) => !d.id.startsWith('debt-'))
             .toList();
         _debts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       } else {
-        _debts = _generateInitialDebts();
+        _debts = [];
       }
 
       // Load split groups
@@ -68,9 +70,10 @@ class ExpenseProvider extends ChangeNotifier {
         final List<dynamic> decodedGroups = jsonDecode(rawGroups);
         _splitGroups = decodedGroups
             .map((g) => SplitGroup.fromMap(Map<String, dynamic>.from(g as Map)))
+            .where((g) => !g.id.startsWith('group-'))
             .toList();
       } else {
-        _splitGroups = _generateInitialGroups();
+        _splitGroups = [];
       }
 
       // Load group expenses
@@ -79,10 +82,11 @@ class ExpenseProvider extends ChangeNotifier {
         final List<dynamic> decodedGExpenses = jsonDecode(rawGroupExpenses);
         _groupExpenses = decodedGExpenses
             .map((ge) => GroupExpense.fromMap(Map<String, dynamic>.from(ge as Map)))
+            .where((ge) => !ge.id.startsWith('ge-'))
             .toList();
         _groupExpenses.sort((a, b) => b.date.compareTo(a.date));
       } else {
-        _groupExpenses = _generateInitialGroupExpenses();
+        _groupExpenses = [];
       }
 
       await _saveAll();
@@ -94,128 +98,6 @@ class ExpenseProvider extends ChangeNotifier {
       _isInitialized = true;
       notifyListeners();
     }
-  }
-
-  // ─── INITIAL SAMPLES ──────────────────────────────────────────
-
-  List<ExpenseItem> _generateInitialSamples() {
-    final now = DateTime.now();
-    return [
-      ExpenseItem(
-        id: 'sample-1',
-        title: 'Cloud VPS Hosting',
-        amount: 24.50,
-        categoryId: 'utilities',
-        type: ExpenseType.expense,
-        date: now.subtract(const Duration(hours: 4)),
-        note: 'Monthly development server',
-      ),
-      ExpenseItem(
-        id: 'sample-2',
-        title: 'Espresso & Bakery',
-        amount: 8.75,
-        categoryId: 'food',
-        type: ExpenseType.expense,
-        date: now.subtract(const Duration(hours: 9)),
-        note: 'Morning fuel',
-      ),
-      ExpenseItem(
-        id: 'sample-3',
-        title: 'Consulting Payout',
-        amount: 750.00,
-        categoryId: 'salary',
-        type: ExpenseType.income,
-        date: now.subtract(const Duration(days: 2)),
-        note: 'Client sprint milestone',
-      ),
-      ExpenseItem(
-        id: 'sample-4',
-        title: 'Subway Pass',
-        amount: 45.00,
-        categoryId: 'transport',
-        type: ExpenseType.expense,
-        date: now.subtract(const Duration(days: 3)),
-        note: 'Commuter monthly refill',
-      ),
-    ];
-  }
-
-  List<DebtItem> _generateInitialDebts() {
-    final now = DateTime.now();
-    return [
-      DebtItem(
-        id: 'debt-1',
-        personName: 'Alex',
-        totalAmount: 100.0,
-        paidAmount: 30.0,
-        type: DebtType.lent,
-        createdAt: now.subtract(const Duration(days: 5)),
-        dueDate: now.add(const Duration(days: 10)),
-        note: 'Weekend concert ticket',
-        repayments: [
-          DebtRepayment(
-            id: 'rep-1',
-            amount: 30.0,
-            date: now.subtract(const Duration(days: 1)),
-            note: 'UPI partial return',
-          ),
-        ],
-      ),
-      DebtItem(
-        id: 'debt-2',
-        personName: 'Sam',
-        totalAmount: 50.0,
-        paidAmount: 0.0,
-        type: DebtType.borrowed,
-        createdAt: now.subtract(const Duration(days: 3)),
-        note: 'Shared cab fare',
-      ),
-    ];
-  }
-
-  List<SplitGroup> _generateInitialGroups() {
-    final now = DateTime.now();
-    return [
-      SplitGroup(
-        id: 'group-1',
-        name: 'Weekend Trip',
-        icon: '🏖️',
-        members: ['You', 'Alex', 'Sam', 'Priya'],
-        createdAt: now.subtract(const Duration(days: 7)),
-      ),
-      SplitGroup(
-        id: 'group-2',
-        name: 'Flatmates',
-        icon: '🏠',
-        members: ['You', 'Rahul', 'John'],
-        createdAt: now.subtract(const Duration(days: 14)),
-      ),
-    ];
-  }
-
-  List<GroupExpense> _generateInitialGroupExpenses() {
-    final now = DateTime.now();
-    return [
-      GroupExpense(
-        id: 'ge-1',
-        groupId: 'group-1',
-        title: 'Resort Booking',
-        amount: 120.0,
-        paidBy: 'You',
-        splitAmong: ['You', 'Alex', 'Sam', 'Priya'],
-        date: now.subtract(const Duration(days: 2)),
-        note: 'Paid upfront',
-      ),
-      GroupExpense(
-        id: 'ge-2',
-        groupId: 'group-1',
-        title: 'Highway Tolls & Snacks',
-        amount: 40.0,
-        paidBy: 'Alex',
-        splitAmong: ['You', 'Alex', 'Sam', 'Priya'],
-        date: now.subtract(const Duration(days: 1)),
-      ),
-    ];
   }
 
   Future<void> _saveAll() async {

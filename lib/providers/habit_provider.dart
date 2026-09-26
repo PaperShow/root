@@ -19,75 +19,21 @@ class HabitProvider extends ChangeNotifier {
 
     if (jsonList != null && jsonList.isNotEmpty) {
       try {
-        _habits = jsonList.map((str) => Habit.fromJson(str)).toList();
+        _habits = jsonList
+            .map((str) => Habit.fromJson(str))
+            .where((h) => !h.id.startsWith('sample_'))
+            .toList();
       } catch (e) {
-        _habits = _getInitialSampleHabits();
+        _habits = [];
         await _save();
       }
     } else {
-      _habits = _getInitialSampleHabits();
+      _habits = [];
       await _save();
     }
 
     _initialized = true;
     notifyListeners();
-  }
-
-  List<Habit> _getInitialSampleHabits() {
-    final now = DateTime.now();
-    final today = _formatDate(now);
-    final yesterday = _formatDate(now.subtract(const Duration(days: 1)));
-    final dayMinus2 = _formatDate(now.subtract(const Duration(days: 2)));
-    final dayMinus3 = _formatDate(now.subtract(const Duration(days: 3)));
-    final dayMinus4 = _formatDate(now.subtract(const Duration(days: 4)));
-
-    return [
-      Habit(
-        id: 'sample_1',
-        name: 'MORNING_RUN',
-        scheduleDays: [1, 2, 3, 4, 5, 6, 7],
-        reminderTime: '06:00 AM',
-        category: 'FITNESS',
-        targetDuration: '30 MIN',
-        completedDates: {today, yesterday, dayMinus2, dayMinus4},
-      ),
-      Habit(
-        id: 'sample_2',
-        name: 'READ_30MIN',
-        scheduleDays: [1, 2, 3, 4, 5],
-        reminderTime: '09:00 PM',
-        category: 'MIND',
-        targetDuration: '30 MIN',
-        completedDates: {today, dayMinus2, dayMinus3},
-      ),
-      Habit(
-        id: 'sample_3',
-        name: 'NO_DOOMSCROLL',
-        scheduleDays: [1, 2, 3, 4, 5, 6, 7],
-        reminderTime: '10:00 PM',
-        category: 'MIND',
-        targetDuration: '60 MIN',
-        completedDates: {today, yesterday, dayMinus3, dayMinus4},
-      ),
-      Habit(
-        id: 'sample_4',
-        name: 'CODE_1HR',
-        scheduleDays: [1, 2, 3, 4, 5],
-        reminderTime: '04:00 PM',
-        category: 'WORK',
-        targetDuration: '60 MIN',
-        completedDates: {today, yesterday, dayMinus2, dayMinus4},
-      ),
-      Habit(
-        id: 'sample_5',
-        name: 'COLD_DMS',
-        scheduleDays: [1, 2, 3, 4, 5],
-        reminderTime: '11:00 AM',
-        category: 'WORK',
-        targetDuration: '15 MIN',
-        completedDates: {today, dayMinus2, dayMinus3, dayMinus4},
-      ),
-    ];
   }
 
   Future<void> addHabit(Habit habit) async {

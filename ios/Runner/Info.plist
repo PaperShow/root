@@ -47,5 +47,16 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is used for direct voice queries in the terminal.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.975392440887-vj055a8u32itcdv4166e4mhpahqer07c</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

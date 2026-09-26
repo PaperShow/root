@@ -1,19 +1,36 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'firebase_options.dart';
 import 'providers/expense_provider.dart';
 import 'providers/habit_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/super_app_hub_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'services/auth_service.dart';
+import 'styles/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Full screen, hiding system UI
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase initialization notice: $e');
+  }
+
+  // Initialize Google Sign-In
+  await AuthService().initialize();
 
   // Initialize theme provider
   final themeProvider = ThemeProvider();
@@ -29,13 +46,14 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final bool hasSeenWelcome = prefs.getBool('has_seen_welcome_screen') ?? false;
+  final bool isLoggedIn = FirebaseAuth.instance.currentUser != null;
 
   runApp(
     RootSuperApp(
       themeProvider: themeProvider,
       habitProvider: habitProvider,
       expenseProvider: expenseProvider,
-      hasSeenWelcome: hasSeenWelcome,
+      hasSeenWelcome: hasSeenWelcome || isLoggedIn,
     ),
   );
 }
@@ -68,34 +86,8 @@ class RootSuperApp extends StatelessWidget {
             title: 'RootL',
             debugShowCheckedModeBanner: false,
             themeMode: tp.appThemeMode,
-            theme: ThemeData(
-              brightness: Brightness.light,
-              scaffoldBackgroundColor: const Color(0xFFF6F7FA),
-              canvasColor: const Color(0xFFF6F7FA),
-              cardColor: Colors.white,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF10B981),
-                brightness: Brightness.light,
-              ),
-              appBarTheme: const AppBarTheme(
-                backgroundColor: Color(0xFFF6F7FA),
-                elevation: 0,
-              ),
-            ),
-            darkTheme: ThemeData(
-              brightness: Brightness.dark,
-              scaffoldBackgroundColor: Colors.black,
-              canvasColor: Colors.black,
-              cardColor: const Color(0xFF101010),
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF69FF94),
-                brightness: Brightness.dark,
-              ),
-              appBarTheme: const AppBarTheme(
-                backgroundColor: Colors.black,
-                elevation: 0,
-              ),
-            ),
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
             home: hasSeenWelcome
                 ? SuperAppHubScreen(themeProvider: themeProvider)
                 : WelcomeScreen(themeProvider: themeProvider),

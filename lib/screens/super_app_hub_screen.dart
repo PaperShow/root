@@ -5,12 +5,12 @@ import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/launcher_service.dart';
 import '../services/volume_controller_service.dart';
+import '../styles/app_theme.dart';
 import '../utils/app_fonts.dart';
 import '../widgets/digital_grain.dart';
 import 'expense_tracker_screen.dart';
 import 'habit_tracker_screen.dart';
 import 'home_screen.dart';
-import 'scratchpad_screen.dart';
 import 'settings_screen.dart';
 import 'volume_controller_screen.dart';
 
@@ -25,11 +25,6 @@ class SuperAppHubScreen extends StatefulWidget {
 
 class _SuperAppHubScreenState extends State<SuperAppHubScreen>
     with WidgetsBindingObserver {
-  static const Color terminalGreen = Color(0xFF69FF94);
-  static const Color pureBlack = Color(0xFF000000);
-  static const Color cardDark = Color(0xFF101010);
-  static const Color surfaceBorder = Color(0xFF202020);
-
   int _currentIndex = 0;
   bool _isOverlayRunning = false;
   bool _isDefaultLauncher = false;
@@ -82,7 +77,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
     }
   }
 
-  Future<void> _toggleVolumeOverlay(bool enable) async {
+  Future<void> _toggleVolumeOverlay(bool enable, AppTheme theme) async {
     if (enable) {
       final hasPerm = await VolumeControllerService.isOverlayPermissionGranted();
       if (!hasPerm) {
@@ -136,39 +131,46 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = AppTheme.of(context);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: pureBlack,
+      backgroundColor: theme.scaffoldBackground,
       body: DigitalGrain(
-        opacity: 0.05,
+        opacity: theme.isLight ? 0.015 : 0.04,
         child: SafeArea(
           bottom: false,
-          child: Column(
+          child: Stack(
             children: [
-              // ─── MINIMAL ROOTL HEADER ──────────────────────────
-              _buildTopHeader(),
+              // ─── TAB CONTENT (STACK BACKGROUND) ─────────────────
+              Column(
+                children: [
+                  _buildTopHeader(theme),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _currentIndex,
+                      children: [
+                        // Tab 0: Expense Tracker
+                        const ExpenseTrackerScreen(isEmbedded: true),
 
-              // ─── TAB CONTENT (INDEXED STACK) ───────────────────
-              Expanded(
-                child: IndexedStack(
-                  index: _currentIndex,
-                  children: [
-                    // Tab 0: Expense
-                    const ExpenseTrackerScreen(isEmbedded: true),
+                        // Tab 1: Habit Tracker
+                        const HabitTrackerScreen(isEmbedded: true),
 
-                    // Tab 1: Habit
-                    const HabitTrackerScreen(isEmbedded: true),
-
-                    // Tab 2: Notes / Scratchpad
-                    const ScratchpadScreen(isEmbedded: true),
-
-                    // Tab 3: Tools
-                    _buildToolsTab(),
-                  ],
-                ),
+                        // Tab 2: Tools & Launcher (Notes removed as requested)
+                        _buildToolsTab(theme),
+                      ],
+                    ),
+                  ),
+                ],
               ),
 
-              // ─── BOTTOM NAVIGATION BAR ─────────────────────────
-              _buildBottomNavigationBar(),
+              // ─── FLOATING MINIMAL BOTTOM NAV (STACK FORMAT) ──────
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: bottomPadding > 0 ? bottomPadding + 8 : 18,
+                child: _buildFloatingBottomBar(theme),
+              ),
             ],
           ),
         ),
@@ -176,48 +178,69 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
     );
   }
 
-  Widget _buildTopHeader() {
+  Widget _buildTopHeader(AppTheme theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: const BoxDecoration(
-        color: pureBlack,
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackground,
         border: Border(
-          bottom: BorderSide(color: Color(0xFF141414), width: 1),
+          bottom: BorderSide(color: theme.border.withValues(alpha: 0.6), width: 1),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Image.asset(
-            'assets/images/root_icon_load.png',
-            width: 22,
-            height: 22,
-            fit: BoxFit.contain,
-            errorBuilder: (_, error, stackTrace) => const Icon(
-              Icons.terminal,
-              color: terminalGreen,
-              size: 20,
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: theme.cardSecondary,
+              shape: BoxShape.circle,
+            ),
+            child: Image.asset(
+              'assets/images/root_icon_load.png',
+              width: 18,
+              height: 18,
+              fit: BoxFit.contain,
+              errorBuilder: (_, error, stackTrace) => Icon(
+                Icons.terminal,
+                color: theme.accent,
+                size: 18,
+              ),
             ),
           ),
           const SizedBox(width: 10),
           Text(
-            'RootL',
-            style: AppFonts.jetBrainsMono(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.5,
+            'root',
+            style: AppFonts.inter(
+              color: theme.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w200,
+              letterSpacing: 2,
             ),
           ),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.palette_outlined, color: Colors.white70, size: 20),
-            tooltip: 'Theme Mode',
+            icon: Icon(
+              theme.isLight ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+              color: theme.textSecondary,
+              size: 20,
+            ),
+            tooltip: theme.isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode',
             visualDensity: VisualDensity.compact,
-            onPressed: () => _showThemeSwitcherSheet(context),
+            onPressed: () {
+              widget.themeProvider.setAppThemeMode(
+                theme.isLight ? ThemeMode.dark : ThemeMode.light,
+              );
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 20),
+            icon: Icon(Icons.tune_outlined, color: theme.textSecondary, size: 20),
+            tooltip: 'Appearance & Themes',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _showThemeSwitcherSheet(context, theme),
+          ),
+          IconButton(
+            icon: Icon(Icons.settings_outlined, color: theme.textSecondary, size: 20),
             tooltip: 'Settings',
             visualDensity: VisualDensity.compact,
             onPressed: _openSettings,
@@ -227,35 +250,58 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
     );
   }
 
-  Widget _buildToolsTab() {
+  Widget _buildToolsTab(AppTheme theme) {
     final themeName = widget.themeProvider.currentTheme.name.toUpperCase();
     final model = _systemInfo['deviceModel'] ?? 'Android Device';
     final androidVer = _systemInfo['androidVersion'] ?? 'OS';
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
       physics: const BouncingScrollPhysics(),
       children: [
+        // Screen Title Section (inspired by reference UI "Device settings" & "Scenes")
+        Text(
+          'tools',
+          style: AppFonts.inter(
+            fontSize: 32,
+            fontWeight: FontWeight.w200,
+            color: theme.textPrimary,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'MINIMAL SYSTEM UTILITIES & CONTROLLERS',
+          style: AppFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: theme.textMuted,
+            letterSpacing: 3,
+          ),
+        ),
+        const SizedBox(height: 20),
+
         // TOOL 1: LAUNCHER
         _buildToolTile(
-          icon: Icons.phone_android,
-          iconColor: const Color(0xFF54A0FF),
+          theme: theme,
+          icon: Icons.phone_android_rounded,
+          iconColor: const Color(0xFF3B82F6),
           title: 'Minimal Launcher',
           subtitle: 'Terminal & Standard ($themeName) • ${_isDefaultLauncher ? "Default Home" : "Tap to open"} • $_appCount apps',
           onTap: _openLauncher,
-          trailing: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF54A0FF),
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.accent,
+              borderRadius: BorderRadius.circular(20),
             ),
-            onPressed: _openLauncher,
             child: Text(
               'OPEN',
-              style: AppFonts.jetBrainsMono(fontWeight: FontWeight.bold, fontSize: 11),
+              style: AppFonts.inter(
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                color: theme.isLight ? Colors.white : Colors.black,
+              ),
             ),
           ),
         ),
@@ -263,44 +309,46 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
 
         // TOOL 2: VOLUME CONTROLLER
         _buildToolTile(
-          icon: Icons.volume_up,
-          iconColor: terminalGreen,
+          theme: theme,
+          icon: Icons.volume_up_rounded,
+          iconColor: theme.accentWarm,
           title: 'Floating Volume Controller',
           subtitle: _isOverlayRunning
-              ? 'Floating widget is active over all apps'
+              ? 'Floating widget active over all apps'
               : 'Turn on floating widget & system audio mixer',
           onTap: _openVolumeController,
           trailing: Switch(
             value: _isOverlayRunning,
-            activeThumbColor: terminalGreen,
-            activeTrackColor: terminalGreen.withValues(alpha: 0.3),
-            inactiveThumbColor: Colors.white38,
-            inactiveTrackColor: Colors.white12,
-            onChanged: (val) => _toggleVolumeOverlay(val),
+            activeThumbColor: Colors.white,
+            activeTrackColor: theme.accentWarm,
+            inactiveThumbColor: theme.textMuted,
+            inactiveTrackColor: theme.cardSecondary,
+            onChanged: (val) => _toggleVolumeOverlay(val, theme),
           ),
         ),
         const SizedBox(height: 12),
 
         // TOOL 3: SYSTEM TELEMETRY
         _buildToolTile(
-          icon: Icons.memory,
-          iconColor: const Color(0xFFA29BFE),
+          theme: theme,
+          icon: Icons.memory_rounded,
+          iconColor: const Color(0xFF8B5CF6),
           title: 'System Telemetry',
           subtitle: '$model • Android $androidVer',
           onTap: _openLauncher,
-          trailing: OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFA29BFE),
-              side: BorderSide(color: const Color(0xFFA29BFE).withValues(alpha: 0.4)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.cardSecondary,
+              borderRadius: BorderRadius.circular(16),
             ),
-            onPressed: _openLauncher,
             child: Text(
               'sys',
-              style: AppFonts.jetBrainsMono(fontWeight: FontWeight.bold, fontSize: 11),
+              style: AppFonts.jetBrainsMono(
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                color: theme.textSecondary,
+              ),
             ),
           ),
         ),
@@ -308,44 +356,81 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
 
         // TOOL 4: SETTINGS
         _buildToolTile(
-          icon: Icons.tune,
-          iconColor: Colors.white70,
-          title: 'Settings & Customization',
+          theme: theme,
+          icon: Icons.tune_rounded,
+          iconColor: theme.textSecondary,
+          title: 'Settings & Appearance',
           subtitle: 'Themes, fonts, appearance, gestures & lock screen',
           onTap: _openSettings,
-          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white38, size: 14),
+          trailing: Icon(Icons.arrow_forward_ios_rounded, color: theme.textMuted, size: 14),
         ),
         const SizedBox(height: 30),
       ],
     );
   }
 
-  void _showThemeSwitcherSheet(BuildContext context) {
+  void _showThemeSwitcherSheet(BuildContext context, AppTheme currentTheme) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: cardDark,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: currentTheme.card,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        side: BorderSide(color: surfaceBorder),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) => Consumer<ThemeProvider>(
         builder: (context, tp, _) {
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            padding: EdgeInsets.fromLTRB(
+              24,
+              12,
+              24,
+              MediaQuery.of(ctx).padding.bottom + 20,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '// THEME & APPEARANCE',
-                  style: AppFonts.jetBrainsMono(
-                    color: terminalGreen,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: currentTheme.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'appearance',
+                      style: AppFonts.inter(
+                        color: currentTheme.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.of(ctx).pop(),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: currentTheme.cardSecondary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.close_rounded, size: 18, color: currentTheme.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
                 _buildThemeOptionTile(
+                  theme: currentTheme,
                   title: 'Dark Mode',
                   subtitle: 'OLED Pure Black & Matrix Neon Green',
                   icon: Icons.dark_mode_outlined,
@@ -357,8 +442,9 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
                 ),
                 const SizedBox(height: 8),
                 _buildThemeOptionTile(
+                  theme: currentTheme,
                   title: 'Light Mode',
-                  subtitle: 'Clean minimalist white and daylight clarity',
+                  subtitle: 'Warm minimalist Nordic daylight tone',
                   icon: Icons.light_mode_outlined,
                   isSelected: tp.appThemeMode == ThemeMode.light,
                   onTap: () {
@@ -368,8 +454,9 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
                 ),
                 const SizedBox(height: 8),
                 _buildThemeOptionTile(
+                  theme: currentTheme,
                   title: 'System Mode',
-                  subtitle: 'Auto-matches your Android device settings',
+                  subtitle: 'Auto-matches device system settings',
                   icon: Icons.brightness_auto_outlined,
                   isSelected: tp.appThemeMode == ThemeMode.system,
                   onTap: () {
@@ -378,20 +465,32 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
                   },
                 ),
                 const SizedBox(height: 16),
-                const Divider(color: surfaceBorder),
-                const SizedBox(height: 6),
+                Divider(color: currentTheme.border),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Launcher Style:',
-                      style: AppFonts.inter(color: Colors.white70, fontSize: 12),
+                      'Launcher Shell:',
+                      style: AppFonts.inter(color: currentTheme.textSecondary, fontSize: 13),
                     ),
-                    TextButton(
-                      onPressed: () => tp.nextTheme(),
-                      child: Text(
-                        tp.currentTheme.name.toUpperCase(),
-                        style: AppFonts.jetBrainsMono(color: terminalGreen, fontWeight: FontWeight.bold),
+                    InkWell(
+                      onTap: () => tp.nextTheme(),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: currentTheme.cardSecondary,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          tp.currentTheme.name.toUpperCase(),
+                          style: AppFonts.inter(
+                            color: currentTheme.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -405,6 +504,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
   }
 
   Widget _buildThemeOptionTile({
+    required AppTheme theme,
     required String title,
     required String subtitle,
     required IconData icon,
@@ -413,44 +513,64 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected ? terminalGreen.withValues(alpha: 0.12) : Colors.black,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected
+              ? (theme.isLight ? const Color(0xFF18181B) : Colors.white)
+              : theme.cardSecondary,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? terminalGreen : surfaceBorder,
+            color: isSelected
+                ? (theme.isLight ? const Color(0xFF18181B) : Colors.white)
+                : theme.border,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? terminalGreen : Colors.white60, size: 20),
-            const SizedBox(width: 12),
+            Icon(
+              icon,
+              color: isSelected
+                  ? (theme.isLight ? Colors.white : Colors.black)
+                  : theme.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: AppFonts.jetBrainsMono(
-                      color: isSelected ? terminalGreen : Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                    style: AppFonts.inter(
+                      color: isSelected
+                          ? (theme.isLight ? Colors.white : Colors.black)
+                          : theme.textPrimary,
+                      fontSize: 15,
+                      fontWeight: isSelected ? FontWeight.w400 : FontWeight.w300,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
                     style: AppFonts.inter(
-                      color: Colors.white54,
-                      fontSize: 10,
+                      color: isSelected
+                          ? (theme.isLight ? Colors.white70 : Colors.black54)
+                          : theme.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w300,
                     ),
                   ),
                 ],
               ),
             ),
             if (isSelected)
-              const Icon(Icons.check_circle, color: terminalGreen, size: 18),
+              Icon(
+                Icons.check_circle_rounded,
+                color: theme.isLight ? Colors.white : Colors.black,
+                size: 18,
+              ),
           ],
         ),
       ),
@@ -458,6 +578,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
   }
 
   Widget _buildToolTile({
+    required AppTheme theme,
     required IconData icon,
     required Color iconColor,
     required String title,
@@ -467,50 +588,58 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: cardDark,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: surfaceBorder),
+          color: theme.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: theme.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: theme.isLight ? 0.02 : 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+                color: iconColor.withValues(alpha: theme.isLight ? 0.1 : 0.2),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: iconColor, size: 22),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: AppFonts.jetBrainsMono(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                    style: AppFonts.inter(
+                      color: theme.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w300,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
                     style: AppFonts.inter(
-                      color: Colors.white54,
-                      fontSize: 11,
+                      color: theme.textMuted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w300,
                     ),
                   ),
                 ],
               ),
             ),
             if (trailing != null) ...[
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               trailing,
             ],
           ],
@@ -519,84 +648,102 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
     );
   }
 
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: pureBlack,
-        border: Border(
-          top: BorderSide(color: Color(0xFF1A1A1A), width: 1),
+  // ─── FLOATING MINIMAL BOTTOM NAV (STACK FORMAT - 3 TABS AS REQUESTED) ───
+  Widget _buildFloatingBottomBar(AppTheme theme) {
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 260),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: theme.navBarBg,
+          borderRadius: BorderRadius.circular(38),
+          border: Border.all(color: theme.navBarBorder, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: theme.navBarShadow,
+              blurRadius: 28,
+              spreadRadius: 2,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            children: [
-              _buildNavItem(
-                index: 0,
-                label: 'EXPENSE',
-                icon: Icons.account_balance_wallet_outlined,
-                activeIcon: Icons.account_balance_wallet,
-              ),
-              _buildNavItem(
-                index: 1,
-                label: 'HABIT',
-                icon: Icons.check_circle_outline,
-                activeIcon: Icons.check_circle,
-              ),
-              _buildNavItem(
-                index: 2,
-                label: 'NOTES',
-                icon: Icons.edit_note_outlined,
-                activeIcon: Icons.edit_note,
-              ),
-              _buildNavItem(
-                index: 3,
-                label: 'TOOLS',
-                icon: Icons.grid_view_outlined,
-                activeIcon: Icons.grid_view_rounded,
-              ),
-            ],
-          ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildFloatingNavItem(
+              index: 0,
+              activeIcon: Icons.home_rounded,
+              inactiveIcon: Icons.home_outlined,
+              tooltip: 'Expenses',
+              theme: theme,
+            ),
+            _buildFloatingNavItem(
+              index: 1,
+              activeIcon: Icons.calendar_month,
+              inactiveIcon: Icons.calendar_month_outlined,
+              tooltip: 'Habits',
+              theme: theme,
+            ),
+            _buildFloatingNavItem(
+              index: 2,
+              activeIcon: Icons.person,
+              inactiveIcon: Icons.person_outline,
+              tooltip: 'Tools',
+              theme: theme,
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem({
+  Widget _buildFloatingNavItem({
     required int index,
-    required String label,
-    required IconData icon,
     required IconData activeIcon,
+    required IconData inactiveIcon,
+    required String tooltip,
+    required AppTheme theme,
   }) {
     final isSelected = _currentIndex == index;
-    return Expanded(
-      child: InkWell(
+
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
         onTap: () {
-          setState(() {
-            _currentIndex = index;
-          });
+          if (_currentIndex != index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          }
         },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              color: isSelected ? terminalGreen : Colors.white38,
-              size: 22,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOutCubic,
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isSelected ? theme.navActiveCircle : Colors.transparent,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: theme.isLight
+                          ? Colors.black.withValues(alpha: 0.18)
+                          : Colors.white.withValues(alpha: 0.15),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Icon(
+              isSelected ? activeIcon : inactiveIcon,
+              color: isSelected ? theme.navActiveIcon : theme.navInactiveIcon,
+              size: 24,
             ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: AppFonts.jetBrainsMono(
-                color: isSelected ? terminalGreen : Colors.white38,
-                fontSize: 9,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
