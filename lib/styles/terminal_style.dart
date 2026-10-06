@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/habit_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/audio_record_service.dart';
-import '../services/groq_service.dart';
+import '../services/ai_service.dart';
 import '../services/terminal_command_service.dart';
 import '../utils/app_fonts.dart';
 import '../utils/app_launcher.dart';
@@ -210,7 +210,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
       return;
     }
 
-    // Process command or route query to Groq AI
+    // Process command or route query to AI
     _controller.clear();
     setState(() {
       _filteredApps = [];
@@ -272,7 +272,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     if (!hasPerm) {
       setState(() {
         _outputHistory.add(TerminalOutput.error(
-          '[WHISPER ERROR] Microphone permission not granted. Please allow microphone access.',
+          '[VOICE ERROR] Microphone permission not granted. Please allow microphone access.',
         ));
       });
       _scrollToBottom();
@@ -285,7 +285,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
         _isRecording = true;
         _recordingDuration = 0;
         _outputHistory.add(TerminalOutput.info(
-          '┌─── GROQ WHISPER VOICE INPUT ───────┐',
+          '┌─── VOICE INPUT ASSISTANT ─────────┐',
         ));
         _outputHistory.add(TerminalOutput(
           text: '  ● Listening... Speak your query or command',
@@ -303,7 +303,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     } else {
       setState(() {
         _outputHistory.add(TerminalOutput.error(
-          '[WHISPER ERROR] Could not initialize audio recorder.',
+          '[VOICE ERROR] Could not initialize audio recorder.',
         ));
       });
       _scrollToBottom();
@@ -320,7 +320,7 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
     if (recordedPath == null) {
       setState(() {
         _isTranscribing = false;
-        _outputHistory.add(TerminalOutput.error('[WHISPER ERROR] Audio file recording failed.'));
+        _outputHistory.add(TerminalOutput.error('[VOICE ERROR] Audio file recording failed.'));
       });
       _scrollToBottom();
       return;
@@ -328,12 +328,12 @@ class _TerminalStyleState extends State<TerminalStyle> with TickerProviderStateM
 
     setState(() {
       _outputHistory.add(TerminalOutput.info(
-        '  [Groq Whisper-large-v3] transcribing audio...',
+        '  [Voice STT] transcribing audio...',
       ));
     });
     _scrollToBottom();
 
-    final transcription = await GroqService.transcribeAudio(
+    final transcription = await AiService.transcribeAudio(
       filePath: recordedPath,
       apiKey: widget.themeProvider.groqApiKey,
       model: widget.themeProvider.groqWhisperModel,

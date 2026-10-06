@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/habit_provider.dart';
 import '../providers/theme_provider.dart';
-import 'groq_service.dart';
+import 'ai_service.dart';
 import 'launcher_service.dart';
 
 /// Represents a line of output in the terminal history.
@@ -66,7 +66,7 @@ enum TerminalMode {
   contactPicker, // Showing contact list for call/msg
 }
 
-/// Service that parses and executes terminal power commands & Groq AI queries.
+/// Service that parses and executes terminal power commands & AI queries.
 class TerminalCommandService {
   List<TerminalContact> _cachedContacts = [];
   bool _contactsLoaded = false;
@@ -212,7 +212,7 @@ class TerminalCommandService {
         TerminalOutput.system(
           '> setkey ${'*' * (key.length > 8 ? 8 : key.length)}',
         ),
-        TerminalOutput.success('  ✓ Groq API key updated successfully!'),
+        TerminalOutput.success('  ✓ AI API key updated successfully!'),
       ];
     }
 
@@ -261,32 +261,34 @@ class TerminalCommandService {
     }
 
     if (lower == 'ai' || lower == 'groq') {
+      final modelName = themeProvider.groqAiModel.replaceAll('groq/', '');
       return [
         TerminalOutput.info(
-          '┌─── GROQ AI CHATBOT (${themeProvider.groqAiModel}) ───┐',
+          '┌─── AI ASSISTANT ($modelName) ───┐',
         ),
         TerminalOutput.ai('  Ask any question directly in terminal!'),
-        TerminalOutput.dim('  Powered by Groq Compound AI & Whisper STT'),
+        TerminalOutput.dim('  Powered by Compound AI & Whisper STT'),
         TerminalOutput.dim('  Usage: ai <your question> or type directly'),
-        TerminalOutput.dim('  Set key: setkey <gsk_...>'),
+        TerminalOutput.dim('  Set key: setkey <key>'),
         TerminalOutput.dim('  Switch model: model <compound|mini|llama>'),
         TerminalOutput.info('└───────────────────────────────────┘'),
       ];
     }
 
     if (lower == 'model' || lower == 'models') {
+      final modelName = themeProvider.groqAiModel.replaceAll('groq/', '');
       return [
-        TerminalOutput.info('┌─── GROQ AI CONFIGURATION ────────┐'),
+        TerminalOutput.info('┌─── AI CONFIGURATION ─────────────┐'),
         TerminalOutput.ai(
-          '  Active AI Model:      ${themeProvider.groqAiModel}',
+          '  Active AI Model:      $modelName',
         ),
         TerminalOutput.ai(
-          '  Active Whisper Model: ${themeProvider.groqWhisperModel}',
+          '  Active Voice Model:   ${themeProvider.groqWhisperModel}',
         ),
         TerminalOutput.dim('  Available Models:'),
-        TerminalOutput.system('    • groq/compound (default - agentic system)'),
+        TerminalOutput.system('    • compound (default - agentic system)'),
         TerminalOutput.system(
-          '    • groq/compound-mini (fast agentic compound)',
+          '    • compound-mini (fast agentic compound)',
         ),
         TerminalOutput.system('    • openai/gpt-oss-120b (GPT-OSS 120B)'),
         TerminalOutput.system('    • openai/gpt-oss-20b (GPT-OSS 20B)'),
@@ -328,11 +330,11 @@ class TerminalCommandService {
       themeProvider.setGroqAiModel(selected);
       return [
         TerminalOutput.system('> model $selected'),
-        TerminalOutput.success('  ✓ Groq AI model set to $selected'),
+        TerminalOutput.success('  ✓ AI model set to $selected'),
       ];
     }
 
-    // Default Fallback: Route unknown prompt directly to Groq AI!
+    // Default Fallback: Route unknown prompt directly to AI!
     return await executeAiQuery(
       trimmed,
       themeProvider.groqApiKey,
@@ -340,7 +342,7 @@ class TerminalCommandService {
     );
   }
 
-  /// Query Groq AI and format the response into terminal output lines.
+  /// Query AI and format the response into terminal output lines.
   Future<List<TerminalOutput>> executeAiQuery(
     String prompt,
     String apiKey, {
@@ -352,12 +354,12 @@ class TerminalCommandService {
 
     final activeModel = (model != null && model.isNotEmpty)
         ? model
-        : GroqService.defaultModel;
+        : AiService.defaultModel;
 
     final String displayName = activeModel == 'groq/compound'
-        ? 'Groq Compound'
+        ? 'Compound AI'
         : activeModel == 'groq/compound-mini'
-        ? 'Groq Compound Mini'
+        ? 'Compound Mini'
         : activeModel == 'openai/gpt-oss-120b'
         ? 'GPT-OSS 120B'
         : activeModel == 'openai/gpt-oss-20b'
@@ -369,7 +371,7 @@ class TerminalCommandService {
       TerminalOutput.info('  [$displayName] thinking...'),
     ];
 
-    final response = await GroqService.askGroq(
+    final response = await AiService.askAi(
       prompt: prompt,
       apiKey: apiKey,
       model: activeModel,
@@ -377,7 +379,7 @@ class TerminalCommandService {
 
     // Format response into terminal lines
     output.add(
-      TerminalOutput.aiHeader('┌─── GROQ RESPONSE ($displayName) ─────'),
+      TerminalOutput.aiHeader('┌─── AI RESPONSE ($displayName) ─────'),
     );
 
     final lines = response.split('\n');
@@ -545,15 +547,15 @@ class TerminalCommandService {
       TerminalOutput.info('│            TERMINAL QUICK ACTIONS            │'),
       TerminalOutput.info('├──────────────────────────────────────────────┤'),
       TerminalOutput(
-        text: '│ ai [query]        ask Groq AI                │',
+        text: '│ ai [query]        ask AI assistant           │',
         color: const Color(0xFF69FF94),
       ),
       TerminalOutput(
-        text: '│ voice / mic       record audio (Groq Whisper)│',
+        text: '│ voice / mic       record voice query (STT)   │',
         color: const Color(0xFF69FF94),
       ),
       TerminalOutput(
-        text: '│ model [name]      switch Groq AI model       │',
+        text: '│ model [name]      switch AI model            │',
         color: const Color(0xFF69FF94),
       ),
       TerminalOutput(
@@ -618,7 +620,7 @@ class TerminalCommandService {
       ),
       TerminalOutput.info('└──────────────────────────────────────────────┘'),
       TerminalOutput.aiHeader(
-        '  ★ Tap the mic icon or type a query directly to talk to Groq!',
+        '  ★ Tap the mic icon or type a query directly to talk to AI!',
       ),
     ];
   }

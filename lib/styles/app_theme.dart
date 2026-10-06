@@ -69,10 +69,10 @@ class AppTheme {
     expenseCoral: Color(0xFFF87171),
     incomeMint: Color(0xFF34D399),
 
-    // Bottom Nav Pill in Dark Mode: Sleek floating capsule
+    // Bottom Nav Pill in Dark Mode: Sleek floating capsule with light-white border
     navBarBg: Color(0xFF18181B),
-    navBarBorder: Color(0xFF2E2E34),
-    navBarShadow: Color(0x77000000),
+    navBarBorder: Color(0x38FFFFFF), // Light white distinction border
+    navBarShadow: Color(0x99000000),
     navActiveCircle: Color(0xFFFFFFFF),
     navActiveIcon: Color(0xFF18181B),
     navInactiveIcon: Color(0xFF71717A),

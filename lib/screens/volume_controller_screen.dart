@@ -18,6 +18,9 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
   Color get pureBlack => theme.scaffoldBackground;
   Color get cardDark => theme.card;
   Color get surfaceBorder => theme.border;
+  Color get textPrimary => theme.textPrimary;
+  Color get textSecondary => theme.textSecondary;
+  Color get textMuted => theme.textMuted;
 
   bool _isOverlayRunning = false;
   bool _hasOverlayPermission = true;
@@ -107,7 +110,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: surfaceBorder,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -124,7 +127,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
             Text(
               'Android requires "Display over other apps" permission so the floating volume widget can stay accessible over all applications.',
               style: AppFonts.inter(
-                color: Colors.white.withValues(alpha: 0.8),
+                color: textSecondary,
                 fontSize: 13,
                 height: 1.4,
               ),
@@ -137,7 +140,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                     onPressed: () => Navigator.of(ctx).pop(false),
                     child: Text(
                       'CANCEL',
-                      style: AppFonts.jetBrainsMono(color: Colors.white54),
+                      style: AppFonts.jetBrainsMono(color: textMuted),
                     ),
                   ),
                 ),
@@ -146,7 +149,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: terminalGreen,
-                      foregroundColor: Colors.black,
+                      foregroundColor: theme.isLight ? Colors.white : Colors.black,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -203,9 +206,9 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: surfaceBorder),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_back_ios_new,
-                        color: Colors.white,
+                        color: textPrimary,
                         size: 14,
                       ),
                     ),
@@ -227,7 +230,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                       Text(
                         'floating overlay & system mixer',
                         style: AppFonts.inter(
-                          color: Colors.white.withValues(alpha: 0.4),
+                          color: textMuted,
                           fontSize: 11,
                         ),
                       ),
@@ -235,7 +238,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.refresh, color: Colors.white54, size: 20),
+                    icon: Icon(Icons.refresh, color: textSecondary, size: 20),
                     onPressed: _refreshState,
                     tooltip: 'Refresh Volumes',
                   ),
@@ -265,7 +268,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                         Text(
                           'HARDWARE AUDIO STREAMS',
                           style: AppFonts.jetBrainsMono(
-                            color: Colors.white.withValues(alpha: 0.5),
+                            color: textMuted,
                             fontSize: 11,
                             letterSpacing: 1.5,
                             fontWeight: FontWeight.bold,
@@ -358,16 +361,16 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                 decoration: BoxDecoration(
                   color: _isOverlayRunning
                       ? terminalGreen.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.05),
+                      : theme.cardSecondary,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: _isOverlayRunning ? terminalGreen : Colors.white24,
+                    color: _isOverlayRunning ? terminalGreen : surfaceBorder,
                     width: 1,
                   ),
                 ),
                 child: Icon(
                   _isOverlayRunning ? Icons.volume_up : Icons.volume_mute,
-                  color: _isOverlayRunning ? terminalGreen : Colors.white54,
+                  color: _isOverlayRunning ? terminalGreen : textMuted,
                   size: 26,
                 ),
               ),
@@ -381,7 +384,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                         Text(
                           'FLOATING WIDGET',
                           style: AppFonts.jetBrainsMono(
-                            color: Colors.white,
+                            color: textPrimary,
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1,
@@ -393,13 +396,13 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                           decoration: BoxDecoration(
                             color: _isOverlayRunning
                                 ? terminalGreen.withValues(alpha: 0.2)
-                                : Colors.white.withValues(alpha: 0.1),
+                                : theme.cardSecondary,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             _isOverlayRunning ? 'ACTIVE' : 'OFF',
                             style: AppFonts.jetBrainsMono(
-                              color: _isOverlayRunning ? terminalGreen : Colors.white54,
+                              color: _isOverlayRunning ? terminalGreen : textMuted,
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
                             ),
@@ -411,7 +414,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                     Text(
                       'Shows a draggable floating volume widget over all apps and home screen.',
                       style: AppFonts.inter(
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: textSecondary,
                         fontSize: 12,
                         height: 1.3,
                       ),
@@ -421,10 +424,10 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
               ),
               Switch(
                 value: _isOverlayRunning,
-                activeThumbColor: terminalGreen,
-                activeTrackColor: terminalGreen.withValues(alpha: 0.3),
-                inactiveThumbColor: Colors.white38,
-                inactiveTrackColor: Colors.white12,
+                activeThumbColor: theme.isLight ? Colors.white : const Color(0xFF18181B),
+                activeTrackColor: theme.isLight ? const Color(0xFF18181B) : Colors.white,
+                inactiveThumbColor: theme.isLight ? const Color(0xFF71717A) : const Color(0xFFA1A1AA),
+                inactiveTrackColor: theme.isLight ? const Color(0xFFE4E4E7) : const Color(0xFF27272A),
                 onChanged: (val) => _toggleOverlay(val),
               ),
             ],
@@ -570,7 +573,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                     Text(
                       title,
                       style: AppFonts.jetBrainsMono(
-                        color: Colors.white,
+                        color: textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -578,7 +581,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
                     Text(
                       subtitle,
                       style: AppFonts.inter(
-                        color: Colors.white.withValues(alpha: 0.4),
+                        color: textMuted,
                         fontSize: 10,
                       ),
                     ),
@@ -588,7 +591,7 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: theme.cardSecondary,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: surfaceBorder),
                 ),
@@ -668,11 +671,11 @@ class _VolumeControllerScreenState extends State<VolumeControllerScreen>
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: AppFonts.inter(color: Colors.white70, fontSize: 12),
+                style: AppFonts.inter(color: textSecondary, fontSize: 12),
                 children: [
                   TextSpan(
                     text: '$title: ',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
                   ),
                   TextSpan(text: desc),
                 ],

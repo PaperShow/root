@@ -14,7 +14,7 @@ const Map<LauncherThemeType, ThemeTip> kThemeTips = {
     title: 'terminal / command shell',
     bullets: [
       'start typing to filter apps instantly',
-      'ask Groq AI any question directly in terminal',
+      'ask AI any question directly in terminal',
       'try commands: call, msg, note, calc, search, sys, setkey',
       'swipe left to access your Habit Tracker commit board',
     ],
@@ -35,6 +35,6 @@ const kUniversalTips = ThemeTip(
     'swipe left on terminal screen to open Habit Tracker',
     'long-press the clock to switch between Terminal and Standard Phone launcher',
     'double-tap anywhere to lock the screen',
-    'open settings (gear icon) to configure Groq API Key and customization options',
+    'open settings (gear icon) for launcher customization options',
   ],
 );

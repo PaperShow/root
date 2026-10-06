@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/expense_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/launcher_service.dart';
 import '../styles/app_theme.dart';
@@ -103,7 +105,7 @@ class SettingsScreen extends StatelessWidget {
                       context,
                       theme: theme,
                       title: 'terminal / command shell',
-                      subtitle: 'type to filter apps, run commands & chat with Groq AI',
+                      subtitle: 'type to filter apps, run commands & chat with AI',
                       themeType: LauncherThemeType.terminal,
                     ),
                     _buildThemeOption(
@@ -242,37 +244,6 @@ class SettingsScreen extends StatelessWidget {
 
                     const SizedBox(height: 48),
 
-                    // Groq AI & Voice
-                    Text(
-                      'GROQ AI & VOICE INTELLIGENCE',
-                      style: AppFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: theme.textMuted,
-                        letterSpacing: 3,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'configured for Groq Compound agentic chat & Groq Whisper voice input.',
-                      style: AppFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w300,
-                        color: theme.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // AI Model Selector
-                    _buildAiModelSelector(context, theme, themeProvider),
-
-                    const SizedBox(height: 12),
-
-                    // API Key Tile
-                    _buildApiKeyTile(context, theme, themeProvider),
-
-                    const SizedBox(height: 48),
-
                     // Wallpaper
                     Text(
                       'WALLPAPER',
@@ -321,7 +292,74 @@ class SettingsScreen extends StatelessWidget {
                       ],
                     ),
 
-                    const SizedBox(height: 64),
+                    const SizedBox(height: 48),
+
+                    // ─── CURRENCY & REGION ──────────────────────────────
+                    Text(
+                      'CURRENCY & REGION',
+                      style: AppFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: theme.textMuted,
+                        letterSpacing: 3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'select your preferred currency for expense and debt tracking. Default is Rupee (₹ INR).',
+                      style: AppFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w300,
+                        color: theme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Consumer<ExpenseProvider>(
+                      builder: (context, expProv, _) {
+                        final currencies = [
+                          {'sym': '₹', 'code': 'INR', 'name': 'Indian Rupee'},
+                          {'sym': '\$', 'code': 'USD', 'name': 'US Dollar'},
+                          {'sym': '€', 'code': 'EUR', 'name': 'Euro'},
+                          {'sym': '£', 'code': 'GBP', 'name': 'British Pound'},
+                          {'sym': '¥', 'code': 'JPY', 'name': 'Japanese Yen'},
+                          {'sym': 'AED', 'code': 'AED', 'name': 'UAE Dirham'},
+                        ];
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: currencies.map((c) {
+                            final isSel = expProv.currencySymbol == c['sym'];
+                            return InkWell(
+                              onTap: () => expProv.setCurrency(c['sym']!, c['code']!),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? (theme.isLight ? const Color(0xFF18181B) : Colors.white)
+                                      : theme.card,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isSel ? Colors.transparent : theme.border,
+                                  ),
+                                ),
+                                child: Text(
+                                  '${c['sym']} ${c['code']}',
+                                  style: AppFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: isSel ? FontWeight.w600 : FontWeight.w400,
+                                    color: isSel
+                                        ? (theme.isLight ? Colors.white : const Color(0xFF18181B))
+                                        : theme.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 48),
 
                     // Turn off Launcher
                     Center(
@@ -462,10 +500,16 @@ class SettingsScreen extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: theme.isLight ? Colors.white : Colors.white,
-            activeTrackColor: theme.accent,
-            inactiveThumbColor: theme.isLight ? const Color(0xFFD4D4D8) : const Color(0xFF71717A),
-            inactiveTrackColor: theme.cardSecondary,
+            activeThumbColor: theme.isLight ? Colors.white : const Color(0xFF18181B),
+            activeTrackColor: theme.isLight ? const Color(0xFF18181B) : Colors.white,
+            inactiveThumbColor: theme.isLight ? const Color(0xFF71717A) : const Color(0xFFA1A1AA),
+            inactiveTrackColor: theme.isLight ? const Color(0xFFE4E4E7) : const Color(0xFF27272A),
+            trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.transparent;
+              }
+              return theme.isLight ? const Color(0xFFD4D4D8) : const Color(0xFF3F3F46);
+            }),
           ),
         ],
       ),
@@ -583,299 +627,6 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildAiModelSelector(
-    BuildContext context,
-    AppTheme theme,
-    ThemeProvider themeProvider,
-  ) {
-    final models = [
-      {
-        'id': 'groq/compound',
-        'name': 'groq / compound (recommended)',
-        'desc': 'agentic AI with web search & integrated tools',
-      },
-      {
-        'id': 'groq/compound-mini',
-        'name': 'groq / compound-mini',
-        'desc': 'ultra low-latency compound AI model',
-      },
-      {
-        'id': 'openai/gpt-oss-120b',
-        'name': 'openai / gpt-oss-120b',
-        'desc': 'powerful 120B open-weights model on Groq LPU',
-      },
-      {
-        'id': 'openai/gpt-oss-20b',
-        'name': 'openai / gpt-oss-20b',
-        'desc': 'fast 20B open-weights model on Groq LPU',
-      },
-      {
-        'id': 'llama-3.3-70b-versatile',
-        'name': 'llama 3.3 70b versatile',
-        'desc': 'standard fast open-weight completion model',
-      },
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.card,
-        border: Border.all(color: theme.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.psychology_outlined, color: Color(0xFF10B981), size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'CHAT COMPLETION MODEL',
-                style: AppFonts.jetBrainsMono(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF10B981),
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...models.map((m) {
-            final isSelected = themeProvider.groqAiModel == m['id'];
-            return InkWell(
-              onTap: () => themeProvider.setGroqAiModel(m['id']!),
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? theme.accent.withValues(alpha: theme.isLight ? 0.08 : 0.12)
-                      : theme.cardSecondary,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: isSelected
-                        ? theme.accent
-                        : theme.border,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            m['name']!,
-                            style: AppFonts.jetBrainsMono(
-                              color: isSelected ? theme.accent : theme.textPrimary,
-                              fontSize: 12.5,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w300,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            m['desc']!,
-                            style: AppFonts.inter(
-                              color: theme.textMuted,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w300,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isSelected)
-                      Icon(Icons.check, color: theme.accent, size: 16),
-                  ],
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.mic_outlined, color: Color(0xFF3B82F6), size: 14),
-              const SizedBox(width: 6),
-              Text(
-                'VOICE STT: Groq Whisper (${themeProvider.groqWhisperModel})',
-                style: AppFonts.jetBrainsMono(
-                  fontSize: 10,
-                  color: const Color(0xFF3B82F6),
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildApiKeyTile(BuildContext context, AppTheme theme, ThemeProvider themeProvider) {
-    final hasKey = themeProvider.groqApiKey.isNotEmpty;
-    final masked = hasKey
-        ? '${themeProvider.groqApiKey.substring(0, themeProvider.groqApiKey.length > 8 ? 8 : themeProvider.groqApiKey.length)}••••••••'
-        : 'using built-in default key';
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.card,
-        border: Border.all(color: theme.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'GROQ API KEY',
-                style: AppFonts.inter(
-                  color: theme.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.edit_outlined, color: theme.textSecondary, size: 18),
-                onPressed: () => _showApiKeyDialog(context, theme, themeProvider),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            masked,
-            style: AppFonts.jetBrainsMono(
-              color: theme.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w300,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showApiKeyDialog(BuildContext context, AppTheme theme, ThemeProvider themeProvider) {
-    final controller = TextEditingController(text: themeProvider.groqApiKey);
-
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: theme.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 16,
-            bottom: bottomInset + MediaQuery.of(ctx).padding.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: theme.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Text(
-                'Groq API Key',
-                style: AppFonts.inter(
-                  color: theme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Enter your Groq Cloud API key for on-device voice and AI processing.',
-                style: AppFonts.inter(
-                  color: theme.textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                style: AppFonts.jetBrainsMono(color: theme.textPrimary, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'gsk_...',
-                  hintStyle: AppFonts.jetBrainsMono(color: theme.textMuted, fontSize: 13),
-                  filled: true,
-                  fillColor: theme.cardSecondary,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: theme.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: theme.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: theme.accent),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: Text('Cancel', style: AppFonts.inter(color: theme.textMuted, fontWeight: FontWeight.w300)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.accent,
-                        foregroundColor: theme.isLight ? Colors.white : Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      onPressed: () {
-                        themeProvider.setGroqApiKey(controller.text.trim());
-                        Navigator.of(ctx).pop();
-                      },
-                      child: Text(
-                        'Save Key',
-                        style: AppFonts.inter(fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

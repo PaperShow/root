@@ -31,6 +31,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
   Color get textPrimary => theme.textPrimary;
   Color get textSecondary => theme.textSecondary;
   Color get textMuted => theme.textMuted;
+  Color get btnForeground => theme.isLight ? Colors.white : const Color(0xFF18181B);
 
   String _selectedCategoryFilter = 'All';
 
@@ -162,14 +163,14 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.add, size: 16, color: Colors.white),
+                              Icon(Icons.add, size: 16, color: btnForeground),
                               const SizedBox(width: 4),
                               Text(
                                 'Add',
                                 style: AppFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
+                                   fontSize: 12,
+                                   fontWeight: FontWeight.w600,
+                                   color: btnForeground,
                                 ),
                               ),
                             ],
@@ -648,7 +649,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                       ),
                     ),
                     child: isDoneToday
-                        ? const Icon(Icons.check, size: 18, color: Colors.white)
+                        ? Icon(Icons.check, size: 18, color: btnForeground)
                         : null,
                   ),
                 ),
@@ -697,7 +698,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                           ),
                         ),
                         child: isDone
-                            ? const Icon(Icons.check, size: 16, color: Colors.white)
+                            ? Icon(Icons.check, size: 16, color: btnForeground)
                             : null,
                       ),
                     ],
@@ -955,7 +956,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                               backgroundColor: isDoneToday
                                   ? textPrimary.withValues(alpha: 0.08)
                                   : terminalGreen,
-                              foregroundColor: isDoneToday ? textPrimary : Colors.white,
+                              foregroundColor: isDoneToday ? textPrimary : btnForeground,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
@@ -1372,7 +1373,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: terminalGreen,
-                          foregroundColor: Colors.white,
+                          foregroundColor: btnForeground,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),

@@ -53,7 +53,7 @@ class AudioRecordService {
 
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${tempDir.path}/groq_whisper_$timestamp.m4a';
+      final filePath = '${tempDir.path}/voice_query_$timestamp.m4a';
       _currentRecordingPath = filePath;
 
       const recordConfig = RecordConfig(

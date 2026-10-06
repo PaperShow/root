@@ -1,8 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/expense_provider.dart';
 import '../providers/theme_provider.dart';
+import '../services/auth_service.dart';
 import '../services/launcher_service.dart';
 import '../services/volume_controller_service.dart';
 import '../styles/app_theme.dart';
@@ -13,6 +16,7 @@ import 'habit_tracker_screen.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'volume_controller_screen.dart';
+import 'welcome_screen.dart';
 
 class SuperAppHubScreen extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -261,7 +265,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
       children: [
         // Screen Title Section (inspired by reference UI "Device settings" & "Scenes")
         Text(
-          'tools',
+          'profile & tools',
           style: AppFonts.inter(
             fontSize: 32,
             fontWeight: FontWeight.w200,
@@ -271,7 +275,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          'MINIMAL SYSTEM UTILITIES & CONTROLLERS',
+          'ACCOUNT & SYSTEM CONTROLLERS',
           style: AppFonts.inter(
             fontSize: 11,
             fontWeight: FontWeight.w600,
@@ -279,6 +283,10 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
             letterSpacing: 3,
           ),
         ),
+        const SizedBox(height: 18),
+
+        // ─── PROFILE & CURRENCY PREFERENCE CARD ───────────
+        _buildProfileAndCurrencyCard(theme),
         const SizedBox(height: 20),
 
         // TOOL 1: LAUNCHER
@@ -366,6 +374,242 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
         ),
         const SizedBox(height: 30),
       ],
+    );
+  }
+
+  Widget _buildProfileAndCurrencyCard(AppTheme theme) {
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName ?? (user?.email?.split('@').first ?? 'Guest User');
+    final email = user?.email ?? 'Local Offline Account';
+    final hasUser = user != null;
+
+    return Consumer<ExpenseProvider>(
+      builder: (context, expenseProvider, _) {
+        return Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: theme.card,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: theme.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: theme.isLight ? 0.02 : 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // User info row
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: theme.cardSecondary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: theme.border, width: 1),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: user?.photoURL != null
+                        ? Image.network(
+                            user!.photoURL!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, error, stackTrace) => Icon(
+                              Icons.person_rounded,
+                              color: theme.textSecondary,
+                              size: 22,
+                            ),
+                          )
+                        : Icon(
+                            hasUser ? Icons.person_rounded : Icons.person_outline_rounded,
+                            color: theme.textSecondary,
+                            size: 22,
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: AppFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
+                            color: theme.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          email,
+                          style: AppFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w300,
+                            color: theme.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () async {
+                      if (hasUser) {
+                        await AuthService().signOut();
+                        if (context.mounted) {
+                          setState(() {});
+                        }
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => WelcomeScreen(themeProvider: widget.themeProvider),
+                          ),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.cardSecondary,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: theme.border, width: 0.8),
+                      ),
+                      child: Text(
+                        hasUser ? 'Sign Out' : 'Sign In',
+                        style: AppFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: hasUser ? theme.expenseCoral : theme.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Divider(color: theme.border.withValues(alpha: 0.6), height: 1),
+              const SizedBox(height: 14),
+
+              // Currency preference selection
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'CURRENCY PREFERENCE',
+                    style: AppFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: theme.textMuted,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  Text(
+                    '${expenseProvider.currencySymbol} ${expenseProvider.currencyCode}',
+                    style: AppFonts.jetBrainsMono(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: [
+                    _buildHubCurrencyChip(theme, expenseProvider, '₹', 'INR'),
+                    const SizedBox(width: 8),
+                    _buildHubCurrencyChip(theme, expenseProvider, '\$', 'USD'),
+                    const SizedBox(width: 8),
+                    _buildHubCurrencyChip(theme, expenseProvider, '€', 'EUR'),
+                    const SizedBox(width: 8),
+                    _buildHubCurrencyChip(theme, expenseProvider, '£', 'GBP'),
+                    const SizedBox(width: 8),
+                    _buildHubCurrencyChip(theme, expenseProvider, '¥', 'JPY'),
+                    const SizedBox(width: 8),
+                    _buildHubCurrencyChip(theme, expenseProvider, 'AED', 'AED'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Default is Rupee (₹). All expenses, budgets and split groups sync automatically.',
+                style: AppFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w300,
+                  color: theme.textMuted,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHubCurrencyChip(
+    AppTheme theme,
+    ExpenseProvider expenseProvider,
+    String symbol,
+    String label,
+  ) {
+    final isSelected = expenseProvider.currencySymbol == symbol;
+    return InkWell(
+      onTap: () async {
+        await expenseProvider.setCurrency(symbol, label);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (theme.isLight ? const Color(0xFF18181B) : Colors.white)
+              : theme.cardSecondary,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.transparent : theme.border,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              symbol,
+              style: AppFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? (theme.isLight ? Colors.white : const Color(0xFF18181B))
+                    : theme.textPrimary,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: AppFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                color: isSelected
+                    ? (theme.isLight ? Colors.white70 : const Color(0xFF52525B))
+                    : theme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -652,23 +896,25 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
   Widget _buildFloatingBottomBar(AppTheme theme) {
     return Center(
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 260),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
           color: theme.navBarBg,
-          borderRadius: BorderRadius.circular(38),
-          border: Border.all(color: theme.navBarBorder, width: 1),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: theme.isLight ? const Color(0xFFD4D4CE) : const Color(0x38FFFFFF),
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
               color: theme.navBarShadow,
-              blurRadius: 28,
-              spreadRadius: 2,
+              blurRadius: 24,
+              spreadRadius: 1,
               offset: const Offset(0, 8),
             ),
           ],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          mainAxisSize: MainAxisSize.min,
           children: [
             _buildFloatingNavItem(
               index: 0,
@@ -677,6 +923,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
               tooltip: 'Expenses',
               theme: theme,
             ),
+            const SizedBox(width: 6),
             _buildFloatingNavItem(
               index: 1,
               activeIcon: Icons.calendar_month,
@@ -684,11 +931,12 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
               tooltip: 'Habits',
               theme: theme,
             ),
+            const SizedBox(width: 6),
             _buildFloatingNavItem(
               index: 2,
               activeIcon: Icons.person,
               inactiveIcon: Icons.person_outline,
-              tooltip: 'Tools',
+              tooltip: 'Profile & Tools',
               theme: theme,
             ),
           ],
@@ -720,8 +968,8 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeInOutCubic,
-          width: 52,
-          height: 52,
+          width: 46,
+          height: 46,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isSelected ? theme.navActiveCircle : Colors.transparent,
@@ -731,8 +979,8 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
                       color: theme.isLight
                           ? Colors.black.withValues(alpha: 0.18)
                           : Colors.white.withValues(alpha: 0.15),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ]
                 : null,
@@ -741,7 +989,7 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
             child: Icon(
               isSelected ? activeIcon : inactiveIcon,
               color: isSelected ? theme.navActiveIcon : theme.navInactiveIcon,
-              size: 24,
+              size: 22,
             ),
           ),
         ),

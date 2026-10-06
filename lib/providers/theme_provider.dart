@@ -40,6 +40,9 @@ class ThemeProvider extends ChangeNotifier {
   bool get isStatusStripEnabled => _isStatusStripEnabled;
   int get standardGridColumns => _standardGridColumns;
   bool get showAppLabels => _showAppLabels;
+  String get aiApiKey => _groqApiKeyVal;
+  String get aiModel => _groqAiModelVal;
+  String get aiWhisperModel => _groqWhisperModelVal;
   String get groqApiKey => _groqApiKeyVal;
   String get groqAiModel => _groqAiModelVal;
   String get groqWhisperModel => _groqWhisperModelVal;
@@ -149,23 +152,29 @@ class ThemeProvider extends ChangeNotifier {
     _save();
   }
 
-  void setGroqApiKey(String key) {
+  void setAiApiKey(String key) {
     _groqApiKeyVal = key.trim();
     notifyListeners();
     _save();
   }
 
-  void setGroqAiModel(String model) {
+  void setGroqApiKey(String key) => setAiApiKey(key);
+
+  void setAiModel(String model) {
     _groqAiModelVal = model.trim();
     notifyListeners();
     _save();
   }
 
-  void setGroqWhisperModel(String model) {
+  void setGroqAiModel(String model) => setAiModel(model);
+
+  void setAiWhisperModel(String model) {
     _groqWhisperModelVal = model.trim();
     notifyListeners();
     _save();
   }
+
+  void setGroqWhisperModel(String model) => setAiWhisperModel(model);
 
   static const int maxDockApps = 10;
 

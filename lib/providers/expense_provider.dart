@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/debt.dart';
 import '../models/expense.dart';
 import '../models/split_group.dart';
+import '../services/ai_service.dart';
 
 class ExpenseProvider extends ChangeNotifier {
   static const String _storageKey = 'root_super_app_expenses';
@@ -12,13 +13,17 @@ class ExpenseProvider extends ChangeNotifier {
   static const String _debtsKey = 'root_super_app_debts';
   static const String _splitGroupsKey = 'root_super_app_split_groups';
   static const String _groupExpensesKey = 'root_super_app_group_expenses';
+  static const String _currencySymbolKey = 'root_super_app_currency_symbol';
+  static const String _currencyCodeKey = 'root_super_app_currency_code';
 
   List<ExpenseItem> _items = [];
   List<DebtItem> _debts = [];
   List<SplitGroup> _splitGroups = [];
   List<GroupExpense> _groupExpenses = [];
 
-  double _monthlyBudget = 1500.0;
+  double _monthlyBudget = 25000.0;
+  String _currencySymbol = '₹'; // Rupee as default
+  String _currencyCode = 'INR';
   bool _isInitialized = false;
 
   List<ExpenseItem> get items => List.unmodifiable(_items);
@@ -27,15 +32,22 @@ class ExpenseProvider extends ChangeNotifier {
   List<GroupExpense> get groupExpenses => List.unmodifiable(_groupExpenses);
 
   double get monthlyBudget => _monthlyBudget;
+  String get currencySymbol => _currencySymbol;
+  String get currencyCode => _currencyCode;
   bool get isInitialized => _isInitialized;
 
   Future<void> init() async {
     if (_isInitialized) return;
     try {
       final prefs = await SharedPreferences.getInstance();
+      _currencySymbol = prefs.getString(_currencySymbolKey) ?? '₹';
+      _currencyCode = prefs.getString(_currencyCodeKey) ?? 'INR';
+
       final budget = prefs.getDouble(_budgetKey);
       if (budget != null && budget > 0) {
         _monthlyBudget = budget;
+      } else {
+        _monthlyBudget = _currencySymbol == '₹' ? 25000.0 : 1500.0;
       }
 
       // Load personal expenses
@@ -138,6 +150,249 @@ class ExpenseProvider extends ChangeNotifier {
     _items.removeWhere((e) => e.id == id);
     notifyListeners();
     await _saveAll();
+  }
+
+  // ─── CURRENCY PREFERENCE ──────────────────────────────────────
+  Future<void> setCurrency(String symbol, String code) async {
+    _currencySymbol = symbol;
+    _currencyCode = code;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_currencySymbolKey, symbol);
+      await prefs.setString(_currencyCodeKey, code);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  String formatAmount(double amount) {
+    final isNegative = amount < 0;
+    final absAmount = amount.abs();
+    if (_currencySymbol == '₹') {
+      final whole = absAmount.round();
+      final str = whole.toString();
+      String formatted;
+      if (str.length <= 3) {
+        formatted = str;
+      } else {
+        final lastThree = str.substring(str.length - 3);
+        final otherNumbers = str.substring(0, str.length - 3);
+        final regex = RegExp(r'\B(?=(\d{2})+(?!\d))');
+        formatted = '${otherNumbers.replaceAll(regex, ',')},$lastThree';
+      }
+      return '${isNegative ? "- " : ""}$_currencySymbol$formatted';
+    } else {
+      final formatted = absAmount.toStringAsFixed(absAmount.truncateToDouble() == absAmount ? 0 : 2);
+      return '${isNegative ? "- " : ""}$_currencySymbol$formatted';
+    }
+  }
+
+  // ─── NATURAL LANGUAGE & VOICE EXPENSE LOGGING ─────────────────
+  Future<ExpenseItem?> parseAndLogNaturalLanguageExpense(String text, {String? apiKey}) async {
+    final raw = text.trim();
+    if (raw.isEmpty) return null;
+
+    // 1. Try AI-powered structured extraction if API key provided
+    if (apiKey != null && apiKey.isNotEmpty) {
+      try {
+        final prompt = 'Extract expense from text: "$raw". Output ONLY valid JSON: {"amount": double, "title": string, "category": string, "type": "expense"|"income"}. Categories: Food & Dining, Groceries, Transportation, Shopping, Bills & Utilities, Entertainment, Health, Income / Salary, General.';
+        final response = await AiService.askAi(prompt: prompt, apiKey: apiKey);
+        final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(response);
+        if (jsonMatch != null) {
+          final decoded = jsonDecode(jsonMatch.group(0)!);
+          final parsedAmount = (decoded['amount'] as num?)?.toDouble();
+          if (parsedAmount != null && parsedAmount > 0) {
+            final title = decoded['title']?.toString() ?? raw;
+            final category = decoded['category']?.toString() ?? 'General';
+            final typeStr = decoded['type']?.toString().toLowerCase();
+            final type = typeStr == 'income' ? ExpenseType.income : ExpenseType.expense;
+            String catId = 'other';
+            final catLower = category.toLowerCase();
+            if (catLower.contains('food') || catLower.contains('dining')) {
+              catId = 'food';
+            } else if (catLower.contains('trans')) {
+              catId = 'transport';
+            } else if (catLower.contains('shop') || catLower.contains('groc')) {
+              catId = 'shopping';
+            } else if (catLower.contains('util') || catLower.contains('bill')) {
+              catId = 'utilities';
+            } else if (catLower.contains('entert')) {
+              catId = 'entertainment';
+            } else if (catLower.contains('health') || catLower.contains('med')) {
+              catId = 'health';
+            } else if (catLower.contains('educ')) {
+              catId = 'education';
+            } else if (catLower.contains('sal') || catLower.contains('inc')) {
+              catId = 'salary';
+            }
+
+            final item = ExpenseItem(
+              id: 'exp-${DateTime.now().millisecondsSinceEpoch}',
+              title: title.isEmpty ? 'Quick Expense' : title,
+              amount: parsedAmount,
+              categoryId: catId,
+              date: DateTime.now(),
+              type: type,
+              note: 'Quick logged: "$raw"',
+            );
+            await addExpense(item);
+            return item;
+          }
+        }
+      } catch (_) {
+        // Fall back seamlessly to local regex NLP engine
+      }
+    }
+
+    // 2. High-speed local NLP regex parser
+    final amountRegex = RegExp(
+      r'(?:₹|\$|rs\.?|inr|usd|€|£)?\s*(\d+(?:[.,]\d+)?)\s*(?:₹|\$|rs\.?|inr|usd|€|£|bucks|rupees)?',
+      caseSensitive: false,
+    );
+    final match = amountRegex.firstMatch(raw);
+    if (match == null) return null;
+
+    final numStr = match.group(1)?.replaceAll(',', '');
+    final amount = double.tryParse(numStr ?? '');
+    if (amount == null || amount <= 0) return null;
+
+    final lower = raw.toLowerCase();
+    final isIncome = lower.contains('salary') ||
+        lower.contains('credited') ||
+        lower.contains('income') ||
+        lower.contains('earned') ||
+        lower.contains('received') ||
+        lower.contains('dividend') ||
+        lower.contains('refund') ||
+        lower.contains('cashback') ||
+        lower.contains('freelance');
+
+    String category = 'General';
+    if (lower.contains('food') ||
+        lower.contains('lunch') ||
+        lower.contains('dinner') ||
+        lower.contains('breakfast') ||
+        lower.contains('coffee') ||
+        lower.contains('cafe') ||
+        lower.contains('tea') ||
+        lower.contains('chai') ||
+        lower.contains('swiggy') ||
+        lower.contains('zomato') ||
+        lower.contains('burger') ||
+        lower.contains('pizza') ||
+        lower.contains('subway') ||
+        lower.contains('restaurant')) {
+      category = 'Food & Dining';
+    } else if (lower.contains('grocery') ||
+        lower.contains('groceries') ||
+        lower.contains('zepto') ||
+        lower.contains('blinkit') ||
+        lower.contains('instamart') ||
+        lower.contains('milk') ||
+        lower.contains('vegetable') ||
+        lower.contains('fruit') ||
+        lower.contains('supermart') ||
+        lower.contains('dmart')) {
+      category = 'Groceries';
+    } else if (lower.contains('uber') ||
+        lower.contains('ola') ||
+        lower.contains('rapido') ||
+        lower.contains('cab') ||
+        lower.contains('taxi') ||
+        lower.contains('metro') ||
+        lower.contains('bus') ||
+        lower.contains('petrol') ||
+        lower.contains('fuel') ||
+        lower.contains('diesel') ||
+        lower.contains('parking') ||
+        lower.contains('toll') ||
+        lower.contains('flight') ||
+        lower.contains('train') ||
+        lower.contains('auto')) {
+      category = 'Transportation';
+    } else if (lower.contains('bill') ||
+        lower.contains('electricity') ||
+        lower.contains('recharge') ||
+        lower.contains('wifi') ||
+        lower.contains('internet') ||
+        lower.contains('broadband') ||
+        lower.contains('water') ||
+        lower.contains('gas') ||
+        lower.contains('cylinder') ||
+        lower.contains('rent')) {
+      category = 'Bills & Utilities';
+    } else if (lower.contains('amazon') ||
+        lower.contains('flipkart') ||
+        lower.contains('myntra') ||
+        lower.contains('shopping') ||
+        lower.contains('clothes') ||
+        lower.contains('shoes') ||
+        lower.contains('shirt') ||
+        lower.contains('dress')) {
+      category = 'Shopping';
+    } else if (lower.contains('movie') ||
+        lower.contains('cinema') ||
+        lower.contains('netflix') ||
+        lower.contains('spotify') ||
+        lower.contains('prime') ||
+        lower.contains('game') ||
+        lower.contains('concert') ||
+        lower.contains('outing')) {
+      category = 'Entertainment';
+    } else if (lower.contains('medicine') ||
+        lower.contains('pharmacy') ||
+        lower.contains('doctor') ||
+        lower.contains('hospital') ||
+        lower.contains('clinic') ||
+        lower.contains('gym') ||
+        lower.contains('protein')) {
+      category = 'Health';
+    } else if (isIncome) {
+      category = 'Income / Salary';
+    }
+
+    var title = raw
+        .replaceAll(match.group(0)!, '')
+        .replaceAll(RegExp(r'\b(spent|paid|for|on|at|rs\.?|rupees|inr|usd|bucks)\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[^\w\s]'), ' ')
+        .trim();
+
+    if (title.isEmpty) {
+      title = category == 'General' ? 'Quick Expense' : category;
+    } else {
+      title = title.split(' ').where((s) => s.isNotEmpty).map((s) => s[0].toUpperCase() + s.substring(1)).join(' ');
+    }
+
+    String categoryId = 'other';
+    if (category == 'Food & Dining') {
+      categoryId = 'food';
+    } else if (category == 'Groceries' || category == 'Shopping') {
+      categoryId = 'shopping';
+    } else if (category == 'Transport') {
+      categoryId = 'transport';
+    } else if (category == 'Utilities') {
+      categoryId = 'utilities';
+    } else if (category == 'Entertainment') {
+      categoryId = 'entertainment';
+    } else if (category == 'Health') {
+      categoryId = 'health';
+    } else if (category == 'Education') {
+      categoryId = 'education';
+    } else if (isIncome || category == 'Income / Salary') {
+      categoryId = 'salary';
+    }
+
+    final item = ExpenseItem(
+      id: 'exp-${DateTime.now().millisecondsSinceEpoch}',
+      title: title,
+      amount: amount,
+      categoryId: categoryId,
+      date: DateTime.now(),
+      type: isIncome ? ExpenseType.income : ExpenseType.expense,
+      note: 'Quick logged: "$raw"',
+    );
+
+    await addExpense(item);
+    return item;
   }
 
   Future<void> setMonthlyBudget(double budget) async {

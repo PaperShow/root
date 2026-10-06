@@ -22,7 +22,7 @@ final List<_Slide> _kSlides = [
     title: 'RootL Launcher',
     bullets: [
       'minimalist command-line interface & authentic phone launcher',
-      'integrated Groq AI Chatbot for instant natural queries',
+      'integrated AI Assistant for instant natural queries',
       'built-in Habit Tracker commit board (swipe left)',
     ],
   ),

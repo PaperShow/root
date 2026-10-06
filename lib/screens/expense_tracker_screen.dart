@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,8 @@ import '../models/debt.dart';
 import '../models/expense.dart';
 import '../models/split_group.dart';
 import '../providers/expense_provider.dart';
+import '../services/ai_service.dart';
+import '../services/audio_record_service.dart';
 import '../styles/app_theme.dart';
 import '../utils/app_fonts.dart';
 
@@ -32,7 +35,51 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
   // Sub-navigation tabs: 0 = SPENDING, 1 = SPLIT GROUPS, 2 = LENDING
   int _mainTab = 0;
   String _filterType = 'ALL'; // ALL, EXPENSE, INCOME
-  final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+
+  final TextEditingController _nlpController = TextEditingController();
+  final AudioRecordService _audioRecordService = AudioRecordService();
+  bool _isListening = false;
+  bool _isProcessingNlp = false;
+  int _recordDuration = 0;
+  StreamSubscription<int>? _durationSub;
+
+  String formatAmount(double amount) {
+    try {
+      final p = Provider.of<ExpenseProvider>(context, listen: false);
+      return p.formatAmount(amount);
+    } catch (_) {
+      return '₹${amount.toStringAsFixed(2)}';
+    }
+  }
+
+  String get currencySymbol {
+    try {
+      final p = Provider.of<ExpenseProvider>(context, listen: false);
+      return p.currencySymbol;
+    } catch (_) {
+      return '₹';
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _durationSub = _audioRecordService.durationStream.listen((sec) {
+      if (mounted) {
+        setState(() {
+          _recordDuration = sec;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _durationSub?.cancel();
+    _audioRecordService.dispose();
+    _nlpController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +212,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               ),
               const SizedBox(height: 2),
               Text(
-                'MONTHLY BUDGET • ${_currencyFormat.format(provider.monthlyBudget)}',
+                'MONTHLY BUDGET • ${formatAmount(provider.monthlyBudget)}',
                 style: AppFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -286,6 +333,10 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
         _buildHeroOverviewCard(provider, netBalance, totalIncome, totalExpense, budget, budgetRatio),
         const SizedBox(height: 16),
 
+        // ─── NATURAL LANGUAGE & VOICE LOGGING BAR ───────────────────
+        _buildNaturalLanguageAndVoiceBar(provider),
+        const SizedBox(height: 16),
+
         if (provider.categoryBreakdownThisMonth.isNotEmpty) ...[
           _buildCategoryBreakdown(provider),
           const SizedBox(height: 16),
@@ -360,7 +411,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                       Icon(Icons.tune, size: 12, color: textSecondary),
                       const SizedBox(width: 4),
                       Text(
-                        'Budget: \$${budget.toInt()}',
+                        'Budget: ${formatAmount(budget)}',
                         style: AppFonts.inter(
                           color: textSecondary,
                           fontSize: 11,
@@ -381,7 +432,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               Expanded(
                 child: _buildMetricColumn(
                   'SPENT',
-                  _currencyFormat.format(totalExpense),
+                  formatAmount(totalExpense),
                   '$percent% used',
                   totalExpense > budget ? expenseCoral : textPrimary,
                 ),
@@ -390,7 +441,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               Expanded(
                 child: _buildMetricColumn(
                   'INCOME',
-                  _currencyFormat.format(totalIncome),
+                  formatAmount(totalIncome),
                   'received',
                   incomeMint,
                 ),
@@ -399,7 +450,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               Expanded(
                 child: _buildMetricColumn(
                   'LEFT',
-                  _currencyFormat.format(remaining),
+                  formatAmount(remaining),
                   remaining >= 0 ? 'Surplus' : 'Deficit',
                   remaining >= 0 ? textPrimary : expenseCoral,
                 ),
@@ -471,6 +522,323 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
     );
   }
 
+  // ─── NATURAL LANGUAGE & VOICE LOGGING BAR ──────────────────────
+  void _showNotificationSnackBar(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: AppFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w400, color: theme.textPrimary),
+        ),
+        backgroundColor: theme.card,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: theme.border, width: 1),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _toggleVoiceRecording(ExpenseProvider provider) async {
+    if (_isListening) {
+      setState(() {
+        _isListening = false;
+        _isProcessingNlp = true;
+      });
+
+      final audioPath = await _audioRecordService.stopRecording();
+      if (audioPath == null) {
+        if (mounted) {
+          setState(() => _isProcessingNlp = false);
+          _showNotificationSnackBar('No recording captured.');
+        }
+        return;
+      }
+
+      try {
+        final transcribed = await AiService.transcribeAudio(filePath: audioPath);
+        if (transcribed.startsWith('[VOICE ERROR]')) {
+          if (mounted) {
+            setState(() => _isProcessingNlp = false);
+            _showNotificationSnackBar(transcribed.replaceAll('[VOICE ERROR]', 'Speech recognition:'));
+          }
+          return;
+        }
+
+        if (mounted) {
+          _nlpController.text = transcribed;
+          await _processNlpInput(provider, transcribed);
+        }
+      } catch (e) {
+        if (mounted) {
+          _showNotificationSnackBar('Voice processing error: $e');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isProcessingNlp = false);
+        }
+      }
+    } else {
+      final hasPerm = await _audioRecordService.hasPermission();
+      if (!hasPerm) {
+        _showNotificationSnackBar('Microphone permission required for voice logging.');
+      }
+      final started = await _audioRecordService.startRecording();
+      if (started && mounted) {
+        setState(() {
+          _isListening = true;
+          _recordDuration = 0;
+        });
+      }
+    }
+  }
+
+  Future<void> _processNlpInput(ExpenseProvider provider, String text) async {
+    final query = text.trim();
+    if (query.isEmpty) return;
+
+    setState(() => _isProcessingNlp = true);
+    try {
+      final loggedItem = await provider.parseAndLogNaturalLanguageExpense(query);
+      if (loggedItem != null) {
+        _nlpController.clear();
+        if (mounted) {
+          FocusScope.of(context).unfocus();
+          final isIncome = loggedItem.type == ExpenseType.income;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    isIncome ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                    color: isIncome ? theme.incomeMint : theme.expenseCoral,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Logged ${isIncome ? "Income" : "Expense"}: ${formatAmount(loggedItem.amount)} • ${loggedItem.title} (${loggedItem.category})',
+                      style: AppFonts.inter(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w400,
+                        color: theme.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: theme.card,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: theme.border, width: 1),
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          _showNotificationSnackBar('Could not detect amount. Try: "Coffee 150" or "Salary 40000"');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showNotificationSnackBar('Error parsing expense: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingNlp = false);
+      }
+    }
+  }
+
+  Widget _buildNaturalLanguageAndVoiceBar(ExpenseProvider provider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cardDark,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: _isListening
+              ? theme.expenseCoral.withValues(alpha: 0.6)
+              : surfaceBorder,
+          width: _isListening ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: theme.isLight ? 0.02 : 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.mic_none_rounded, size: 14, color: theme.textMuted),
+              const SizedBox(width: 6),
+              Text(
+                'NATURAL LANGUAGE & VOICE LOG',
+                style: AppFonts.inter(
+                  color: theme.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 2.2,
+                ),
+              ),
+              const Spacer(),
+              if (_isListening)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.expenseCoral.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: theme.expenseCoral,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '00:${_recordDuration.toString().padLeft(2, '0')}',
+                        style: AppFonts.jetBrainsMono(
+                          color: theme.expenseCoral,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _isListening
+                    ? InkWell(
+                        onTap: () => _toggleVoiceRecording(provider),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.graphic_eq_rounded, color: theme.expenseCoral, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Listening... Tap mic to save',
+                                style: AppFonts.inter(
+                                  color: theme.expenseCoral,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : TextField(
+                        controller: _nlpController,
+                        onSubmitted: (val) => _processNlpInput(provider, val),
+                        style: AppFonts.inter(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w400,
+                          color: textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'e.g. "Coffee 150" or "Spent 500 on dinner"...',
+                          hintStyle: AppFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w300,
+                            color: textMuted,
+                          ),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                          border: InputBorder.none,
+                        ),
+                      ),
+              ),
+              if (!_isListening && _nlpController.text.isNotEmpty) ...[
+                IconButton(
+                  icon: Icon(Icons.clear, size: 16, color: textMuted),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  onPressed: () {
+                    _nlpController.clear();
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: _isProcessingNlp ? null : () => _processNlpInput(provider, _nlpController.text),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: theme.isLight ? const Color(0xFF18181B) : Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 16,
+                      color: theme.isLight ? Colors.white : const Color(0xFF18181B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              InkWell(
+                onTap: _isProcessingNlp ? null : () => _toggleVoiceRecording(provider),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _isListening
+                        ? theme.expenseCoral
+                        : theme.cardSecondary,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _isListening ? Colors.transparent : theme.border,
+                      width: 1,
+                    ),
+                  ),
+                  child: _isProcessingNlp
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.textPrimary,
+                          ),
+                        )
+                      : Icon(
+                          _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                          size: 18,
+                          color: _isListening ? Colors.white : theme.textPrimary,
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // ─── CATEGORY BREAKDOWN ─────────────────────────────────────────
   Widget _buildCategoryBreakdown(ExpenseProvider provider) {
     final breakdown = provider.categoryBreakdownThisMonth;
@@ -536,7 +904,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                       ],
                     ),
                     Text(
-                      _currencyFormat.format(entry.value),
+                      formatAmount(entry.value),
                       style: AppFonts.inter(
                         color: textPrimary,
                         fontSize: 13,
@@ -722,7 +1090,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               ),
             ),
             Text(
-              '${isExpense ? '-' : '+'}${_currencyFormat.format(item.amount)}',
+              '${isExpense ? '-' : '+'}${formatAmount(item.amount)}',
               style: AppFonts.inter(
                 color: isExpense ? textPrimary : incomeMint,
                 fontSize: 15,
@@ -827,7 +1195,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                       Text('TOTAL SPENT', style: AppFonts.inter(color: textMuted, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 2)),
                       const SizedBox(height: 2),
                       Text(
-                        _currencyFormat.format(totalSpent),
+                        formatAmount(totalSpent),
                         style: AppFonts.inter(color: textPrimary, fontSize: 14, fontWeight: FontWeight.w300),
                       ),
                     ],
@@ -843,7 +1211,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                         Text('YOUR BALANCE', style: AppFonts.inter(color: textMuted, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 2)),
                         const SizedBox(height: 2),
                         Text(
-                          isPositive ? '+${_currencyFormat.format(userBalance)}' : '-${_currencyFormat.format(userBalance.abs())}',
+                          isPositive ? '+${formatAmount(userBalance)}' : '-${formatAmount(userBalance.abs())}',
                           style: AppFonts.inter(
                             color: userBalance == 0 ? textMuted : (isPositive ? incomeMint : expenseCoral),
                             fontSize: 14,
@@ -922,7 +1290,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                     Text('I LENT (RECEIVE)', style: AppFonts.inter(color: textMuted, fontSize: 9.5, fontWeight: FontWeight.w600, letterSpacing: 1)),
                     const SizedBox(height: 6),
                     Text(
-                      _currencyFormat.format(toReceive),
+                      formatAmount(toReceive),
                       style: AppFonts.inter(color: incomeMint, fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                   ],
@@ -944,7 +1312,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                     Text('I BORROWED (PAY)', style: AppFonts.inter(color: textMuted, fontSize: 9.5, fontWeight: FontWeight.w600, letterSpacing: 1)),
                     const SizedBox(height: 6),
                     Text(
-                      _currencyFormat.format(toPay),
+                      formatAmount(toPay),
                       style: AppFonts.inter(color: expenseCoral, fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                   ],
@@ -1037,8 +1405,8 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Total: ${_currencyFormat.format(debt.totalAmount)}', style: AppFonts.inter(color: textSecondary, fontSize: 11.5)),
-              Text('Left: ${_currencyFormat.format(debt.remainingAmount)}', style: AppFonts.inter(color: isLent ? incomeMint : expenseCoral, fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Total: ${formatAmount(debt.totalAmount)}', style: AppFonts.inter(color: textSecondary, fontSize: 11.5)),
+              Text('Left: ${formatAmount(debt.remainingAmount)}', style: AppFonts.inter(color: isLent ? incomeMint : expenseCoral, fontSize: 12, fontWeight: FontWeight.w700)),
             ],
           ),
           const SizedBox(height: 8),
@@ -1182,7 +1550,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               autofocus: true,
               style: AppFonts.inter(color: textPrimary, fontSize: 18, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
-                prefixText: '\$ ',
+                prefixText: '$currencySymbol ',
                 prefixStyle: AppFonts.inter(color: textMuted, fontSize: 18),
                 filled: true,
                 fillColor: theme.cardSecondary,
@@ -1340,7 +1708,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   style: AppFonts.inter(color: textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
-                    prefixText: '\$ ',
+                    prefixText: '$currencySymbol ',
                     hintText: 'Amount',
                     filled: true,
                     fillColor: theme.cardSecondary,
@@ -1445,7 +1813,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Remaining Due: ${_currencyFormat.format(debt.remainingAmount)}',
+              'Remaining Due: ${formatAmount(debt.remainingAmount)}',
               style: AppFonts.inter(color: textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 16),
@@ -1455,7 +1823,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               autofocus: true,
               style: AppFonts.inter(color: textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
-                prefixText: '\$ ',
+                prefixText: '$currencySymbol ',
                 hintText: 'Amount paid',
                 filled: true,
                 fillColor: theme.cardSecondary,
@@ -1670,7 +2038,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   style: AppFonts.inter(color: textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
-                    prefixText: '\$ ',
+                    prefixText: '$currencySymbol ',
                     hintText: 'Total Amount',
                     filled: true,
                     fillColor: theme.cardSecondary,
@@ -1820,7 +2188,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                       children: [
                         Text(e.key, style: AppFonts.inter(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
                         Text(
-                          isOwed ? '+${_currencyFormat.format(e.value)}' : '-${_currencyFormat.format(e.value.abs())}',
+                          isOwed ? '+${formatAmount(e.value)}' : '-${formatAmount(e.value.abs())}',
                           style: AppFonts.inter(color: isOwed ? incomeMint : expenseCoral, fontSize: 13, fontWeight: FontWeight.w700),
                         ),
                       ],
@@ -2018,7 +2386,7 @@ class _AddExpenseSheetContentState extends State<_AddExpenseSheetContent> {
               ),
               autofocus: true,
               decoration: InputDecoration(
-                prefixText: '\$ ',
+                prefixText: '${widget.provider.currencySymbol} ',
                 prefixStyle: AppFonts.inter(color: theme.textMuted, fontSize: 28),
                 hintText: '0.00',
                 hintStyle: AppFonts.inter(color: theme.textMuted.withValues(alpha: 0.5)),

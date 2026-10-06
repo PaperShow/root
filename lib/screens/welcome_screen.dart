@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../providers/expense_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../styles/app_theme.dart';
@@ -22,10 +24,40 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   final AuthService _authService = AuthService();
   bool _isSigningIn = false;
   String? _errorMessage;
+  String _selectedCurrencySymbol = '₹';
+  String _selectedCurrencyCode = 'INR';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCurrency();
+  }
+
+  Future<void> _loadSavedCurrency() async {
+    final prefs = await SharedPreferences.getInstance();
+    final sym = prefs.getString('preferred_currency_symbol') ?? '₹';
+    final code = prefs.getString('preferred_currency_code') ?? 'INR';
+    if (mounted) {
+      setState(() {
+        _selectedCurrencySymbol = sym;
+        _selectedCurrencyCode = code;
+      });
+    }
+  }
 
   Future<void> _proceedToApp({bool isGoogle = false, String? userName}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_welcome_screen', true);
+    await prefs.setString('preferred_currency_symbol', _selectedCurrencySymbol);
+    await prefs.setString('preferred_currency_code', _selectedCurrencyCode);
+
+    if (mounted) {
+      try {
+        final expenseProv = Provider.of<ExpenseProvider>(context, listen: false);
+        await expenseProv.setCurrency(_selectedCurrencySymbol, _selectedCurrencyCode);
+      } catch (_) {}
+    }
+
     if (isGoogle) {
       await prefs.setString('user_auth_provider', 'google');
       if (userName != null) {
@@ -186,7 +218,43 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ],
 
-                const Spacer(flex: 4),
+                const Spacer(flex: 3),
+
+                // ─── CURRENCY SELECTION (RUPEE AS DEFAULT) ───────────
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      'PREF CURRENCY',
+                      style: AppFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: theme.textMuted,
+                        letterSpacing: 2.5,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildCurrencyChip(theme, '₹', 'INR'),
+                          const SizedBox(width: 8),
+                          _buildCurrencyChip(theme, '\$', 'USD'),
+                          const SizedBox(width: 8),
+                          _buildCurrencyChip(theme, '€', 'EUR'),
+                          const SizedBox(width: 8),
+                          _buildCurrencyChip(theme, '£', 'GBP'),
+                          const SizedBox(width: 8),
+                          _buildCurrencyChip(theme, 'AED', 'AED'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
 
                 // ─── GOOGLE LOGIN BUTTON WITH ASSET ICON ─────────────
                 SizedBox(
@@ -257,6 +325,61 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCurrencyChip(AppTheme theme, String symbol, String code) {
+    final isSelected = _selectedCurrencySymbol == symbol;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedCurrencySymbol = symbol;
+          _selectedCurrencyCode = code;
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (theme.isLight ? const Color(0xFF18181B) : Colors.white)
+              : theme.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? Colors.transparent
+                : theme.border,
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              symbol,
+              style: AppFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? (theme.isLight ? Colors.white : const Color(0xFF18181B))
+                    : theme.textPrimary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              code,
+              style: AppFonts.inter(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w400,
+                color: isSelected
+                    ? (theme.isLight ? Colors.white70 : const Color(0xFF52525B))
+                    : theme.textMuted,
+              ),
+            ),
+          ],
         ),
       ),
     );
