@@ -47,6 +47,16 @@ class DebtItem {
   final List<DebtRepayment> repayments;
   final bool isSettled;
 
+  // Sharing: the record is stored from the owner's point of view.
+  final String? ownerUid;
+  final String? ownerName;
+  final String? counterpartyUid;
+  final String? counterpartyEmail;
+
+  /// Whether the signed-in user created this record. Records shared with the
+  /// user by someone else are shown with the name and direction flipped.
+  final bool isOwnedByViewer;
+
   const DebtItem({
     required this.id,
     required this.personName,
@@ -58,7 +68,52 @@ class DebtItem {
     this.note,
     this.repayments = const [],
     this.isSettled = false,
+    this.ownerUid,
+    this.ownerName,
+    this.counterpartyUid,
+    this.counterpartyEmail,
+    this.isOwnedByViewer = true,
   });
+
+  bool get isLinkedToUser => counterpartyUid != null;
+  bool get isPendingSignup => counterpartyUid == null && counterpartyEmail != null;
+
+  List<String> get participants => [
+        ?ownerUid,
+        ?counterpartyUid,
+      ];
+
+  /// Returns this record as seen by [viewerUid].
+  DebtItem forViewer(String? viewerUid) {
+    if (viewerUid == null || ownerUid == null || ownerUid == viewerUid) {
+      return _copy(isOwnedByViewer: true);
+    }
+    return _copy(
+      personName: ownerName ?? 'Someone',
+      type: type == DebtType.lent ? DebtType.borrowed : DebtType.lent,
+      isOwnedByViewer: false,
+    );
+  }
+
+  DebtItem _copy({String? personName, DebtType? type, required bool isOwnedByViewer}) {
+    return DebtItem(
+      id: id,
+      personName: personName ?? this.personName,
+      totalAmount: totalAmount,
+      paidAmount: paidAmount,
+      type: type ?? this.type,
+      createdAt: createdAt,
+      dueDate: dueDate,
+      note: note,
+      repayments: repayments,
+      isSettled: isSettled,
+      ownerUid: ownerUid,
+      ownerName: ownerName,
+      counterpartyUid: counterpartyUid,
+      counterpartyEmail: counterpartyEmail,
+      isOwnedByViewer: isOwnedByViewer,
+    );
+  }
 
   double get remainingAmount {
     final rem = totalAmount - paidAmount;
@@ -90,6 +145,11 @@ class DebtItem {
       note: note ?? this.note,
       repayments: repayments ?? this.repayments,
       isSettled: isSettled ?? this.isSettled,
+      ownerUid: ownerUid,
+      ownerName: ownerName,
+      counterpartyUid: counterpartyUid,
+      counterpartyEmail: counterpartyEmail,
+      isOwnedByViewer: isOwnedByViewer,
     );
   }
 
@@ -105,6 +165,11 @@ class DebtItem {
       'note': note,
       'repayments': repayments.map((e) => e.toMap()).toList(),
       'isSettled': isSettled,
+      'ownerUid': ownerUid,
+      'ownerName': ownerName,
+      'counterpartyUid': counterpartyUid,
+      'counterpartyEmail': counterpartyEmail?.toLowerCase(),
+      'participants': participants,
     };
   }
 
@@ -125,6 +190,10 @@ class DebtItem {
           .map((r) => DebtRepayment.fromMap(Map<String, dynamic>.from(r as Map)))
           .toList(),
       isSettled: map['isSettled'] as bool? ?? false,
+      ownerUid: map['ownerUid'] as String?,
+      ownerName: map['ownerName'] as String?,
+      counterpartyUid: map['counterpartyUid'] as String?,
+      counterpartyEmail: map['counterpartyEmail'] as String?,
     );
   }
 }

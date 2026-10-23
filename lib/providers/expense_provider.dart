@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,6 +9,15 @@ import '../models/debt.dart';
 import '../models/expense.dart';
 import '../models/split_group.dart';
 import '../services/ai_service.dart';
+import '../services/user_directory_service.dart';
+
+/// A group action that was refused, with a message suitable for the user.
+class GroupActionException implements Exception {
+  final String message;
+  const GroupActionException(this.message);
+  @override
+  String toString() => message;
+}
 
 class ExpenseProvider extends ChangeNotifier {
   static const String _storageKey = 'root_super_app_expenses';
@@ -17,9 +29,24 @@ class ExpenseProvider extends ChangeNotifier {
   static const String _currencyCodeKey = 'root_super_app_currency_code';
 
   List<ExpenseItem> _items = [];
+  // Offline (guest) storage for lending & groups
   List<DebtItem> _debts = [];
   List<SplitGroup> _splitGroups = [];
   List<GroupExpense> _groupExpenses = [];
+
+  // Shared storage once signed in
+  User? _user;
+  AppUserProfile? _profile;
+  StreamSubscription<User?>? _authSub;
+  final List<StreamSubscription<dynamic>> _cloudSubs = [];
+  final Map<String, StreamSubscription<dynamic>> _expenseSubs = {};
+  List<SplitGroup> _cloudGroups = [];
+  final Map<String, List<GroupExpense>> _cloudGroupExpenses = {};
+  List<SplitGroup> _invitesByUid = [];
+  List<SplitGroup> _invitesByEmail = [];
+  List<DebtItem> _cloudDebts = [];
+  bool _isCloudLoading = false;
+  String? _lastCloudError;
 
   double _monthlyBudget = 25000.0;
   String _currencySymbol = '₹'; // Rupee as default
@@ -27,9 +54,20 @@ class ExpenseProvider extends ChangeNotifier {
   bool _isInitialized = false;
 
   List<ExpenseItem> get items => List.unmodifiable(_items);
-  List<DebtItem> get debts => List.unmodifiable(_debts);
-  List<SplitGroup> get splitGroups => List.unmodifiable(_splitGroups);
-  List<GroupExpense> get groupExpenses => List.unmodifiable(_groupExpenses);
+  List<DebtItem> get debts => List.unmodifiable(isCloudSync ? _cloudDebts : _debts);
+  List<SplitGroup> get splitGroups => List.unmodifiable(isCloudSync ? _cloudGroups : _splitGroups);
+
+  /// Groups the signed-in user has been invited to but not joined yet.
+  List<SplitGroup> get groupInvites {
+    final byId = {for (final g in [..._invitesByUid, ..._invitesByEmail]) g.id: g};
+    return byId.values.where((g) => !_cloudGroups.any((c) => c.id == g.id)).toList();
+  }
+
+  bool get isCloudSync => _user != null;
+  bool get isCloudLoading => _isCloudLoading;
+  String? get lastCloudError => _lastCloudError;
+  String? get currentUid => _user?.uid;
+  AppUserProfile? get currentProfile => _profile;
 
   double get monthlyBudget => _monthlyBudget;
   String get currencySymbol => _currencySymbol;
@@ -109,6 +147,7 @@ class ExpenseProvider extends ChangeNotifier {
     } finally {
       _isInitialized = true;
       notifyListeners();
+      _listenToAuth();
     }
   }
 
@@ -404,18 +443,38 @@ class ExpenseProvider extends ChangeNotifier {
   // ─── DEBT & LENDING MANAGEMENT ────────────────────────────────
 
   double get totalToReceive {
-    return _debts
+    return debts
         .where((d) => d.type == DebtType.lent && !d.isSettled)
         .fold(0.0, (sum, d) => sum + d.remainingAmount);
   }
 
   double get totalToPay {
-    return _debts
+    return debts
         .where((d) => d.type == DebtType.borrowed && !d.isSettled)
         .fold(0.0, (sum, d) => sum + d.remainingAmount);
   }
 
+  /// Adds a lending record. When signed in, [counterpartyUid] links it to
+  /// another account (they see it immediately) and [counterpartyEmail] links it
+  /// to someone who hasn't joined yet (they see it once they sign up).
   Future<void> addDebt(DebtItem debt) async {
+    if (isCloudSync) {
+      final record = DebtItem(
+        id: debt.id,
+        personName: debt.personName,
+        totalAmount: debt.totalAmount,
+        type: debt.type,
+        createdAt: debt.createdAt,
+        dueDate: debt.dueDate,
+        note: debt.note,
+        ownerUid: _user!.uid,
+        ownerName: _myDisplayName,
+        counterpartyUid: debt.counterpartyUid,
+        counterpartyEmail: debt.counterpartyEmail,
+      );
+      await _cloudWrite(() => _debtsRef.doc(record.id).set(record.toMap()));
+      return;
+    }
     _debts.insert(0, debt);
     _debts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     notifyListeners();
@@ -423,9 +482,7 @@ class ExpenseProvider extends ChangeNotifier {
   }
 
   Future<void> recordDebtRepayment(String debtId, double amount, String? note) async {
-    final index = _debts.indexWhere((d) => d.id == debtId);
-    if (index != -1) {
-      final old = _debts[index];
+    await _updateDebt(debtId, (old) {
       final newPaid = (old.paidAmount + amount).clamp(0.0, old.totalAmount);
       final newRepayments = List<DebtRepayment>.from(old.repayments)
         ..insert(
@@ -437,22 +494,16 @@ class ExpenseProvider extends ChangeNotifier {
             note: note,
           ),
         );
-      final isNowSettled = newPaid >= old.totalAmount;
-
-      _debts[index] = old.copyWith(
+      return old.copyWith(
         paidAmount: newPaid,
         repayments: newRepayments,
-        isSettled: isNowSettled,
+        isSettled: newPaid >= old.totalAmount,
       );
-      notifyListeners();
-      await _saveAll();
-    }
+    });
   }
 
   Future<void> settleDebt(String debtId) async {
-    final index = _debts.indexWhere((d) => d.id == debtId);
-    if (index != -1) {
-      final old = _debts[index];
+    await _updateDebt(debtId, (old) {
       final remaining = old.remainingAmount;
       final newRepayments = List<DebtRepayment>.from(old.repayments);
       if (remaining > 0) {
@@ -466,17 +517,41 @@ class ExpenseProvider extends ChangeNotifier {
           ),
         );
       }
-      _debts[index] = old.copyWith(
+      return old.copyWith(
         paidAmount: old.totalAmount,
         repayments: newRepayments,
         isSettled: true,
       );
-      notifyListeners();
-      await _saveAll();
+    });
+  }
+
+  Future<void> _updateDebt(String debtId, DebtItem Function(DebtItem old) change) async {
+    if (isCloudSync) {
+      await _cloudWrite(() => _db.runTransaction((tx) async {
+            final ref = _debtsRef.doc(debtId);
+            final snap = await tx.get(ref);
+            if (!snap.exists) return;
+            final updated = change(DebtItem.fromMap({...snap.data()!, 'id': snap.id}));
+            tx.update(ref, {
+              'paidAmount': updated.paidAmount,
+              'repayments': updated.repayments.map((r) => r.toMap()).toList(),
+              'isSettled': updated.isSettled,
+            });
+          }));
+      return;
     }
+    final index = _debts.indexWhere((d) => d.id == debtId);
+    if (index == -1) return;
+    _debts[index] = change(_debts[index]);
+    notifyListeners();
+    await _saveAll();
   }
 
   Future<void> deleteDebt(String debtId) async {
+    if (isCloudSync) {
+      await _cloudWrite(() => _debtsRef.doc(debtId).delete());
+      return;
+    }
     _debts.removeWhere((d) => d.id == debtId);
     notifyListeners();
     await _saveAll();
@@ -484,13 +559,159 @@ class ExpenseProvider extends ChangeNotifier {
 
   // ─── SPLITWISE GROUPS MANAGEMENT ──────────────────────────────
 
-  Future<void> createSplitGroup(SplitGroup group) async {
+  /// The member entry representing the signed-in user (or "You" offline).
+  GroupMember get selfMember {
+    final user = _user;
+    if (user == null) {
+      return const GroupMember(id: GroupMember.localSelfId, name: 'You', status: MemberStatus.active);
+    }
+    return GroupMember(
+      id: user.uid,
+      name: _myDisplayName,
+      uid: user.uid,
+      email: user.email?.toLowerCase(),
+      username: _profile?.username,
+      status: MemberStatus.active,
+    );
+  }
+
+  /// Member id of the current user inside [group], if they belong to it.
+  String? myMemberId(SplitGroup group) {
+    if (!isCloudSync) return GroupMember.localSelfId;
+    return group.memberByUid(_user!.uid)?.id;
+  }
+
+  bool isGroupAdmin(SplitGroup group) => !isCloudSync || group.isAdmin(_user!.uid);
+
+  SplitGroup? groupById(String groupId) {
+    for (final g in splitGroups) {
+      if (g.id == groupId) return g;
+    }
+    return null;
+  }
+
+  Future<void> createSplitGroup({
+    required String name,
+    String icon = '👥',
+    List<GroupMember> otherMembers = const [],
+  }) async {
+    final self = selfMember;
+    final group = SplitGroup(
+      id: newId(),
+      name: name,
+      icon: icon,
+      members: [self, ...otherMembers],
+      createdAt: DateTime.now(),
+      createdBy: _user?.uid,
+      admins: [if (_user != null) _user!.uid],
+    );
+    if (isCloudSync) {
+      await _cloudWrite(() => _groupsRef.doc(group.id).set(group.toMap()));
+      return;
+    }
     _splitGroups.insert(0, group);
     notifyListeners();
     await _saveAll();
   }
 
+  Future<void> addGroupMember(String groupId, GroupMember member) async {
+    await _updateGroup(groupId, (g) {
+      final duplicate = g.members.any((m) =>
+          (member.uid != null && m.uid == member.uid) ||
+          (member.email != null && m.email?.toLowerCase() == member.email!.toLowerCase()));
+      if (duplicate) throw const GroupActionException('This person is already in the group.');
+      return g.copyWith(members: [...g.members, member]);
+    });
+  }
+
+  Future<void> updateGroupMember(String groupId, GroupMember member) async {
+    await _updateGroup(groupId, (g) => g.copyWith(
+          members: g.members.map((m) => m.id == member.id ? member : m).toList(),
+        ));
+  }
+
+  Future<void> removeGroupMember(String groupId, String memberId) async {
+    final balance = getGroupMemberBalances(groupId)[memberId] ?? 0.0;
+    if (balance.abs() >= 0.01) {
+      throw const GroupActionException('Settle this member\'s balance before removing them.');
+    }
+    await _updateGroup(groupId, (g) {
+      final removed = g.memberById(memberId);
+      return g.copyWith(
+        members: g.members.where((m) => m.id != memberId).toList(),
+        admins: g.admins.where((a) => a != removed?.uid).toList(),
+      );
+    });
+  }
+
+  Future<void> renameSplitGroup(String groupId, String name) async {
+    await _updateGroup(groupId, (g) => g.copyWith(name: name));
+  }
+
+  Future<void> _updateGroup(String groupId, SplitGroup Function(SplitGroup g) change) async {
+    if (isCloudSync) {
+      await _db.runTransaction((tx) async {
+        final ref = _groupsRef.doc(groupId);
+        final snap = await tx.get(ref);
+        if (!snap.exists) throw const GroupActionException('This group no longer exists.');
+        final updated = change(SplitGroup.fromMap({...snap.data()!, 'id': snap.id}));
+        tx.set(ref, updated.toMap());
+      });
+      return;
+    }
+    final index = _splitGroups.indexWhere((g) => g.id == groupId);
+    if (index == -1) return;
+    _splitGroups[index] = change(_splitGroups[index]);
+    notifyListeners();
+    await _saveAll();
+  }
+
+  Future<void> acceptGroupInvite(String groupId) async {
+    final user = _user;
+    if (user == null) return;
+    final email = user.email?.toLowerCase();
+    await _updateGroup(groupId, (g) => g.copyWith(
+          members: g.members.map((m) {
+            final isMe = m.status == MemberStatus.invited &&
+                (m.uid == user.uid || (m.uid == null && email != null && m.email?.toLowerCase() == email));
+            if (!isMe) return m;
+            return m.copyWith(
+              uid: user.uid,
+              email: email,
+              username: _profile?.username,
+              status: MemberStatus.active,
+            );
+          }).toList(),
+        ));
+  }
+
+  Future<void> declineGroupInvite(String groupId) async {
+    final user = _user;
+    if (user == null) return;
+    final email = user.email?.toLowerCase();
+    await _updateGroup(groupId, (g) => g.copyWith(
+          members: g.members.map((m) {
+            final isMe = m.status == MemberStatus.invited &&
+                (m.uid == user.uid || (m.uid == null && email != null && m.email?.toLowerCase() == email));
+            // Keep the member (their past expenses still reference them) but unlink the invite
+            return isMe ? m.copyWith(status: MemberStatus.placeholder, clearUid: true, clearEmail: true) : m;
+          }).toList(),
+        ));
+  }
+
   Future<void> deleteSplitGroup(String groupId) async {
+    if (isCloudSync) {
+      await _cloudWrite(() async {
+        final expenses = await _groupsRef.doc(groupId).collection('expenses').get();
+        final batch = _db.batch();
+        for (final doc in expenses.docs) {
+          batch.delete(doc.reference);
+        }
+        batch.delete(_groupsRef.doc(groupId));
+        await batch.commit();
+      });
+      return;
+    }
     _splitGroups.removeWhere((g) => g.id == groupId);
     _groupExpenses.removeWhere((ge) => ge.groupId == groupId);
     notifyListeners();
@@ -498,39 +719,61 @@ class ExpenseProvider extends ChangeNotifier {
   }
 
   Future<void> addGroupExpense(GroupExpense expense) async {
+    if (isCloudSync) {
+      await _cloudWrite(() => _groupsRef.doc(expense.groupId).collection('expenses').doc(expense.id).set(expense.toMap()));
+      return;
+    }
     _groupExpenses.insert(0, expense);
     _groupExpenses.sort((a, b) => b.date.compareTo(a.date));
     notifyListeners();
     await _saveAll();
   }
 
-  Future<void> deleteGroupExpense(String expenseId) async {
+  /// Records that [fromId] paid [toId] back, which moves both balances toward zero.
+  Future<void> recordGroupSettlement(String groupId, String fromId, String toId, double amount) async {
+    await addGroupExpense(GroupExpense(
+      id: newId(),
+      groupId: groupId,
+      title: 'Settlement',
+      amount: amount,
+      paidBy: fromId,
+      splitAmong: [toId],
+      date: DateTime.now(),
+      isSettlement: true,
+      createdBy: _user?.uid,
+    ));
+  }
+
+  Future<void> deleteGroupExpense(String groupId, String expenseId) async {
+    if (isCloudSync) {
+      await _cloudWrite(() => _groupsRef.doc(groupId).collection('expenses').doc(expenseId).delete());
+      return;
+    }
     _groupExpenses.removeWhere((ge) => ge.id == expenseId);
     notifyListeners();
     await _saveAll();
   }
 
   List<GroupExpense> getExpensesForGroup(String groupId) {
+    if (isCloudSync) return List.unmodifiable(_cloudGroupExpenses[groupId] ?? const []);
     return _groupExpenses.where((ge) => ge.groupId == groupId).toList();
   }
 
   double getGroupTotalSpent(String groupId) {
-    return getExpensesForGroup(groupId).fold(0.0, (sum, ge) => sum + ge.amount);
+    return getExpensesForGroup(groupId)
+        .where((ge) => !ge.isSettlement)
+        .fold(0.0, (sum, ge) => sum + ge.amount);
   }
 
-  /// Calculates net balance (+ is owed to member, - is owed by member)
+  /// Net balance per member id (+ is owed to member, - is owed by member)
   Map<String, double> getGroupMemberBalances(String groupId) {
-    final matches = _splitGroups.where((g) => g.id == groupId);
-    if (matches.isEmpty) return {};
-    final group = matches.first;
-    final expenses = getExpensesForGroup(groupId);
-    final Map<String, double> balances = {};
+    final group = groupById(groupId);
+    if (group == null) return {};
+    final Map<String, double> balances = {
+      for (final member in group.members) member.id: 0.0,
+    };
 
-    for (final member in group.members) {
-      balances[member] = 0.0;
-    }
-
-    for (final exp in expenses) {
+    for (final exp in getExpensesForGroup(groupId)) {
       // Payer gets credit
       balances[exp.paidBy] = (balances[exp.paidBy] ?? 0.0) + exp.amount;
       // Split participants get debited their share
@@ -541,6 +784,252 @@ class ExpenseProvider extends ChangeNotifier {
     }
 
     return balances;
+  }
+
+  /// Minimal list of payments that would bring every balance to zero.
+  List<SettlementSuggestion> getSettlementSuggestions(String groupId) {
+    final balances = getGroupMemberBalances(groupId);
+    final debtors = balances.entries.where((e) => e.value < -0.009).map((e) => MapEntry(e.key, -e.value)).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final creditors = balances.entries.where((e) => e.value > 0.009).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final suggestions = <SettlementSuggestion>[];
+    var i = 0, j = 0;
+    final owed = debtors.map((e) => e.value).toList();
+    final due = creditors.map((e) => e.value).toList();
+    while (i < debtors.length && j < creditors.length) {
+      final amount = owed[i] < due[j] ? owed[i] : due[j];
+      suggestions.add(SettlementSuggestion(fromId: debtors[i].key, toId: creditors[j].key, amount: amount));
+      owed[i] -= amount;
+      due[j] -= amount;
+      if (owed[i] < 0.01) i++;
+      if (due[j] < 0.01) j++;
+    }
+    return suggestions;
+  }
+
+  // ─── CLOUD SYNC (signed-in users share groups & lending) ──────
+
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  CollectionReference<Map<String, dynamic>> get _groupsRef => _db.collection('groups');
+  CollectionReference<Map<String, dynamic>> get _debtsRef => _db.collection('debts');
+
+  String get _myDisplayName {
+    final name = _user?.displayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return _profile?.displayName ?? _user?.email?.split('@').first ?? 'You';
+  }
+
+  String newId() {
+    try {
+      return _db.collection('_').doc().id;
+    } catch (_) {
+      return DateTime.now().microsecondsSinceEpoch.toString();
+    }
+  }
+
+  void _listenToAuth() {
+    try {
+      _authSub = FirebaseAuth.instance.authStateChanges().listen(_onAuthChanged);
+    } catch (e) {
+      if (kDebugMode) print('ExpenseProvider auth listen error: $e');
+    }
+  }
+
+  Future<void> _onAuthChanged(User? user) async {
+    if (user?.uid == _user?.uid) return;
+    _stopCloudSync();
+    _user = user;
+    if (user == null) {
+      notifyListeners();
+      return;
+    }
+    _isCloudLoading = true;
+    notifyListeners();
+
+    _profile = await UserDirectoryService().upsertCurrentUser(user);
+    await _migrateLocalDataToCloud(user);
+    await _claimDebtsSentToMyEmail(user);
+    if (_user?.uid != user.uid) return; // Signed out meanwhile
+    _startCloudSync(user);
+  }
+
+  void _startCloudSync(User user) {
+    final uid = user.uid;
+    final email = user.email?.toLowerCase();
+
+    _cloudSubs.add(_groupsRef.where('memberUids', arrayContains: uid).snapshots().listen((snap) {
+      _cloudGroups = snap.docs.map((d) => SplitGroup.fromMap({...d.data(), 'id': d.id})).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _syncExpenseListeners();
+      _isCloudLoading = false;
+      notifyListeners();
+    }, onError: _onCloudError));
+
+    _cloudSubs.add(_groupsRef.where('invitedUids', arrayContains: uid).snapshots().listen((snap) {
+      _invitesByUid = snap.docs.map((d) => SplitGroup.fromMap({...d.data(), 'id': d.id})).toList();
+      notifyListeners();
+    }, onError: _onCloudError));
+
+    if (email != null) {
+      _cloudSubs.add(_groupsRef.where('invitedEmails', arrayContains: email).snapshots().listen((snap) {
+        _invitesByEmail = snap.docs.map((d) => SplitGroup.fromMap({...d.data(), 'id': d.id})).toList();
+        notifyListeners();
+      }, onError: _onCloudError));
+    }
+
+    _cloudSubs.add(_debtsRef.where('participants', arrayContains: uid).snapshots().listen((snap) {
+      _cloudDebts = snap.docs
+          .map((d) => DebtItem.fromMap({...d.data(), 'id': d.id}).forViewer(uid))
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      notifyListeners();
+    }, onError: _onCloudError));
+  }
+
+  void _syncExpenseListeners() {
+    final ids = _cloudGroups.map((g) => g.id).toSet();
+    for (final id in _expenseSubs.keys.where((id) => !ids.contains(id)).toList()) {
+      _expenseSubs.remove(id)?.cancel();
+      _cloudGroupExpenses.remove(id);
+    }
+    for (final id in ids.where((id) => !_expenseSubs.containsKey(id))) {
+      _expenseSubs[id] = _groupsRef.doc(id).collection('expenses').snapshots().listen((snap) {
+        _cloudGroupExpenses[id] = snap.docs
+            .map((d) => GroupExpense.fromMap({...d.data(), 'id': d.id, 'groupId': id}))
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+        notifyListeners();
+      }, onError: _onCloudError);
+    }
+  }
+
+  void _stopCloudSync() {
+    for (final sub in _cloudSubs) {
+      sub.cancel();
+    }
+    _cloudSubs.clear();
+    for (final sub in _expenseSubs.values) {
+      sub.cancel();
+    }
+    _expenseSubs.clear();
+    _cloudGroups = [];
+    _cloudGroupExpenses.clear();
+    _invitesByUid = [];
+    _invitesByEmail = [];
+    _cloudDebts = [];
+    _profile = null;
+    _isCloudLoading = false;
+  }
+
+  void _onCloudError(Object e) {
+    _isCloudLoading = false;
+    _lastCloudError = e.toString();
+    if (kDebugMode) print('ExpenseProvider cloud error: $e');
+    notifyListeners();
+  }
+
+  Future<void> _cloudWrite(Future<void> Function() write) async {
+    try {
+      await write();
+    } catch (e) {
+      _onCloudError(e);
+      rethrow;
+    }
+  }
+
+  /// Uploads groups and lending records created offline so they can be shared.
+  Future<void> _migrateLocalDataToCloud(User user) async {
+    if (_splitGroups.isEmpty && _debts.isEmpty) return;
+    try {
+      final batch = _db.batch();
+      final self = selfMember;
+
+      for (final group in _splitGroups) {
+        String mapId(String id) => id == GroupMember.localSelfId ? self.id : id;
+        final migrated = SplitGroup(
+          id: group.id,
+          name: group.name,
+          icon: group.icon,
+          members: group.members.map((m) => m.id == GroupMember.localSelfId ? self : m).toList(),
+          createdAt: group.createdAt,
+          createdBy: user.uid,
+          admins: [user.uid],
+        );
+        batch.set(_groupsRef.doc(group.id), migrated.toMap());
+        for (final exp in _groupExpenses.where((e) => e.groupId == group.id)) {
+          final moved = GroupExpense(
+            id: exp.id,
+            groupId: exp.groupId,
+            title: exp.title,
+            amount: exp.amount,
+            paidBy: mapId(exp.paidBy),
+            splitAmong: exp.splitAmong.map(mapId).toList(),
+            date: exp.date,
+            note: exp.note,
+            isSettlement: exp.isSettlement,
+            createdBy: user.uid,
+          );
+          batch.set(_groupsRef.doc(group.id).collection('expenses').doc(exp.id), moved.toMap());
+        }
+      }
+
+      for (final debt in _debts) {
+        final moved = DebtItem(
+          id: debt.id,
+          personName: debt.personName,
+          totalAmount: debt.totalAmount,
+          paidAmount: debt.paidAmount,
+          type: debt.type,
+          createdAt: debt.createdAt,
+          dueDate: debt.dueDate,
+          note: debt.note,
+          repayments: debt.repayments,
+          isSettled: debt.isSettled,
+          ownerUid: user.uid,
+          ownerName: _myDisplayName,
+        );
+        batch.set(_debtsRef.doc(debt.id), moved.toMap());
+      }
+
+      await batch.commit();
+      _splitGroups = [];
+      _groupExpenses = [];
+      _debts = [];
+      await _saveAll();
+    } catch (e) {
+      if (kDebugMode) print('ExpenseProvider migration error: $e');
+    }
+  }
+
+  /// Links lending records that were addressed to this email before signup.
+  Future<void> _claimDebtsSentToMyEmail(User user) async {
+    final email = user.email?.toLowerCase();
+    if (email == null) return;
+    try {
+      final pending = await _debtsRef
+          .where('counterpartyEmail', isEqualTo: email)
+          .where('counterpartyUid', isNull: true)
+          .get();
+      for (final doc in pending.docs) {
+        final data = doc.data();
+        if (data['counterpartyUid'] != null || data['ownerUid'] == user.uid) continue;
+        await doc.reference.update({
+          'counterpartyUid': user.uid,
+          'participants': FieldValue.arrayUnion([user.uid]),
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('ExpenseProvider claim debts error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _stopCloudSync();
+    super.dispose();
   }
 
   // ─── COMPUTED GETTERS (PERSONAL) ──────────────────────────────

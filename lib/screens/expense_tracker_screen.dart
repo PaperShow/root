@@ -11,6 +11,8 @@ import '../services/ai_service.dart';
 import '../services/audio_record_service.dart';
 import '../styles/app_theme.dart';
 import '../utils/app_fonts.dart';
+import '../widgets/person_picker_field.dart';
+import 'group_detail_screen.dart';
 
 class ExpenseTrackerScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -1109,28 +1111,147 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
 
   Widget _buildSplitGroupsTab(ExpenseProvider provider) {
     final groups = provider.splitGroups;
-
-    if (groups.isEmpty) {
-      return _buildEmptyState('NO SPLIT GROUPS', 'Tap the + button below to create a group for shared trips or flat expenses.');
-    }
+    final invites = provider.groupInvites;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(20, 10, 20, widget.isEmbedded ? 104 : 20),
       physics: const BouncingScrollPhysics(),
       children: [
-        ...groups.map((g) => _buildGroupCard(g, provider)),
+        if (!provider.isCloudSync) ...[
+          _buildSignInHint('Sign in with Google to invite friends by username or email and share groups with them.'),
+          const SizedBox(height: 12),
+        ],
+        if (invites.isNotEmpty) ...[
+          Text('INVITATIONS', style: AppFonts.inter(color: textMuted, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+          const SizedBox(height: 10),
+          ...invites.map((g) => _buildInviteCard(g, provider)),
+          const SizedBox(height: 10),
+        ],
+        if (groups.isEmpty && invites.isEmpty)
+          provider.isCloudLoading
+              ? Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator(color: textMuted, strokeWidth: 2)),
+                )
+              : _buildEmptyState('NO SPLIT GROUPS', 'Tap the + button below to create a group for shared trips or flat expenses.')
+        else
+          ...groups.map((g) => _buildGroupCard(g, provider)),
         const SizedBox(height: 40),
       ],
     );
   }
 
-  Widget _buildGroupCard(SplitGroup group, ExpenseProvider provider) {
-    final expenses = provider.getExpensesForGroup(group.id);
-    final totalSpent = expenses.fold<double>(0.0, (sum, e) => sum + e.amount);
-    final userBalance = provider.getGroupMemberBalances(group.id)['You'] ?? 0.0;
-    final isPositive = userBalance >= 0;
-
+  Widget _buildSignInHint(String text) {
     return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cardDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: surfaceBorder),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, color: textMuted, size: 18),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: AppFonts.inter(color: textSecondary, fontSize: 12))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteCard(SplitGroup group, ExpenseProvider provider) {
+    final inviter = group.createdBy != null ? group.memberByUid(group.createdBy!)?.name : null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardDark,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.accentWarm.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(group.icon, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(group.name, style: AppFonts.inter(color: textPrimary, fontSize: 15, fontWeight: FontWeight.w400)),
+                    Text(
+                      '${inviter ?? 'Someone'} invited you • ${group.members.length} members',
+                      style: AppFonts.inter(color: textMuted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: textSecondary,
+                    side: BorderSide(color: surfaceBorder),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => _runGroupAction(() => provider.declineGroupInvite(group.id)),
+                  child: Text('Decline', style: AppFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.accent,
+                    foregroundColor: theme.isLight ? Colors.white : Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => _runGroupAction(() => provider.acceptGroupInvite(group.id)),
+                  child: Text('Join group', style: AppFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runGroupAction(Future<void> Function() action) async {
+    try {
+      await action();
+    } on GroupActionException catch (e) {
+      _showNotificationSnackBar(e.message);
+    } catch (_) {
+      _showNotificationSnackBar('Could not save. Check your connection and try again.');
+    }
+  }
+
+  void _openGroup(SplitGroup group) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GroupDetailScreen(groupId: group.id)),
+    );
+  }
+
+  Widget _buildGroupCard(SplitGroup group, ExpenseProvider provider) {
+    final expenses = provider.getExpensesForGroup(group.id).where((e) => !e.isSettlement).toList();
+    final totalSpent = expenses.fold<double>(0.0, (total, e) => total + e.amount);
+    final myId = provider.myMemberId(group);
+    final userBalance = myId != null ? (provider.getGroupMemberBalances(group.id)[myId] ?? 0.0) : 0.0;
+    final isSettled = userBalance.abs() < 0.01;
+    final isPositive = userBalance >= 0;
+    final pendingInvites = group.members.where((m) => m.status == MemberStatus.invited).length;
+
+    return GestureDetector(
+      onTap: () => _openGroup(group),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1165,16 +1286,13 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                       ),
                     ),
                     Text(
-                      '${group.members.length} members • ${expenses.length} shared bills',
+                      '${group.members.length} members${pendingInvites > 0 ? ' ($pendingInvites invited)' : ''} • ${expenses.length} shared bills',
                       style: AppFonts.inter(color: textMuted, fontSize: 11),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: textMuted, size: 18),
-                onPressed: () => provider.deleteSplitGroup(group.id),
-              ),
+              Icon(Icons.chevron_right_rounded, color: textMuted, size: 20),
             ],
           ),
           const SizedBox(height: 14),
@@ -1211,9 +1329,11 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                         Text('YOUR BALANCE', style: AppFonts.inter(color: textMuted, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 2)),
                         const SizedBox(height: 2),
                         Text(
-                          isPositive ? '+${formatAmount(userBalance)}' : '-${formatAmount(userBalance.abs())}',
+                          isSettled
+                              ? 'Settled'
+                              : (isPositive ? '+${formatAmount(userBalance)}' : '-${formatAmount(userBalance.abs())}'),
                           style: AppFonts.inter(
-                            color: userBalance == 0 ? textMuted : (isPositive ? incomeMint : expenseCoral),
+                            color: isSettled ? textMuted : (isPositive ? incomeMint : expenseCoral),
                             fontSize: 14,
                             fontWeight: FontWeight.w300,
                           ),
@@ -1238,7 +1358,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  onPressed: () => _showAddGroupExpenseSheet(context, provider, group),
+                  onPressed: () => showAddGroupExpenseSheet(context, provider, group),
                   child: Text('+ Add Expense', style: AppFonts.inter(fontSize: 11, fontWeight: FontWeight.w600)),
                 ),
               ),
@@ -1250,12 +1370,13 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
                 ),
-                onPressed: () => _showGroupDetailsSheet(context, provider, group),
-                child: Text('Balances', style: AppFonts.inter(fontSize: 11, fontWeight: FontWeight.w600)),
+                onPressed: () => _openGroup(group),
+                child: Text('Settle up', style: AppFonts.inter(fontSize: 11, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
         ],
+      ),
       ),
     );
   }
@@ -1273,6 +1394,10 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
       padding: EdgeInsets.fromLTRB(20, 8, 20, widget.isEmbedded ? 104 : 20),
       physics: const BouncingScrollPhysics(),
       children: [
+        if (!provider.isCloudSync) ...[
+          _buildSignInHint('Sign in with Google so the people you lend to (or borrow from) can see these records too.'),
+          const SizedBox(height: 12),
+        ],
         // SUMMARY TILES
         Row(
           children: [
@@ -1390,13 +1515,40 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                         fontSize: 10.5,
                       ),
                     ),
+                    if (debt.isLinkedToUser || debt.isPendingSignup) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(
+                            debt.isLinkedToUser ? Icons.people_alt_outlined : Icons.schedule_rounded,
+                            size: 11,
+                            color: debt.isLinkedToUser ? incomeMint : theme.accentWarm,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              debt.isLinkedToUser
+                                  ? (debt.isOwnedByViewer ? 'Shared with them' : 'Added by ${debt.personName}')
+                                  : 'They will see this after joining with ${debt.counterpartyEmail}',
+                              style: AppFonts.inter(
+                                color: debt.isLinkedToUser ? incomeMint : theme.accentWarm,
+                                fontSize: 10,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: textMuted, size: 16),
-                onPressed: () => provider.deleteDebt(debt.id),
-              ),
+              if (debt.isOwnedByViewer)
+                IconButton(
+                  icon: Icon(Icons.delete_outline, color: textMuted, size: 16),
+                  onPressed: () => _runGroupAction(() => provider.deleteDebt(debt.id)),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -1446,7 +1598,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: () => provider.settleDebt(debt.id),
+                  onPressed: () => _runGroupAction(() => provider.settleDebt(debt.id)),
                   child: Text('Settle', style: AppFonts.inter(fontSize: 11, fontWeight: FontWeight.w600)),
                 ),
               ],
@@ -1549,13 +1701,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
               style: AppFonts.inter(color: textPrimary, fontSize: 18, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(
-                prefixText: '$currencySymbol ',
-                prefixStyle: AppFonts.inter(color: textMuted, fontSize: 18),
-                filled: true,
-                fillColor: theme.cardSecondary,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              ),
+              decoration: sheetInputDecoration(theme, prefixText: '$currencySymbol '),
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -1583,10 +1729,10 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
 
   // 3. ADD DEBT BOTTOM SHEET (converted from showDialog)
   void _showAddDebtSheet(BuildContext context, ExpenseProvider provider) {
-    final nameCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
     DebtType type = DebtType.lent;
+    PersonPick? person;
 
     showModalBottomSheet(
       context: context,
@@ -1692,39 +1838,30 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                 ),
                 const SizedBox(height: 14),
 
-                TextField(
-                  controller: nameCtrl,
-                  style: AppFonts.inter(color: textPrimary, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: "Person's name (e.g. Alex)",
-                    filled: true,
-                    fillColor: theme.cardSecondary,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
+                PersonPickerField(
+                  searchEnabled: provider.isCloudSync,
+                  excludeUid: provider.currentUid,
+                  onChanged: (p) => setSheetState(() => person = p),
                 ),
+                if (!provider.isCloudSync) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Saved on this device. Sign in to share records with the other person.',
+                    style: AppFonts.inter(color: textMuted, fontSize: 11),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 TextField(
                   controller: amountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   style: AppFonts.inter(color: textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
-                  decoration: InputDecoration(
-                    prefixText: '$currencySymbol ',
-                    hintText: 'Amount',
-                    filled: true,
-                    fillColor: theme.cardSecondary,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
+                  decoration: sheetInputDecoration(theme, hint: 'Amount', prefixText: '$currencySymbol '),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: noteCtrl,
                   style: AppFonts.inter(color: textPrimary, fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: 'Note (optional)',
-                    filled: true,
-                    fillColor: theme.cardSecondary,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
+                  decoration: sheetInputDecoration(theme, hint: 'Note (optional)'),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -1737,21 +1874,25 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
                     ),
                     onPressed: () {
-                      final name = nameCtrl.text.trim();
+                      final picked = person;
                       final amt = double.tryParse(amountCtrl.text.trim());
-                      if (name.isNotEmpty && amt != null && amt > 0) {
-                        provider.addDebt(
-                          DebtItem(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            personName: name,
-                            totalAmount: amt,
-                            type: type,
-                            createdAt: DateTime.now(),
-                            note: noteCtrl.text.trim().isNotEmpty ? noteCtrl.text.trim() : null,
-                          ),
-                        );
+                      if (picked == null || picked.name.isEmpty || amt == null || amt <= 0) {
+                        _showNotificationSnackBar('Enter a person and a valid amount');
+                        return;
                       }
                       Navigator.of(ctx).pop();
+                      _runGroupAction(() => provider.addDebt(
+                            DebtItem(
+                              id: provider.newId(),
+                              personName: picked.name,
+                              totalAmount: amt,
+                              type: type,
+                              createdAt: DateTime.now(),
+                              note: noteCtrl.text.trim().isNotEmpty ? noteCtrl.text.trim() : null,
+                              counterpartyUid: picked.user?.uid,
+                              counterpartyEmail: picked.email,
+                            ),
+                          ));
                     },
                     child: Text('Save Record', style: AppFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
                   ),
@@ -1822,24 +1963,13 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
               style: AppFonts.inter(color: textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(
-                prefixText: '$currencySymbol ',
-                hintText: 'Amount paid',
-                filled: true,
-                fillColor: theme.cardSecondary,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              ),
+              decoration: sheetInputDecoration(theme, hint: 'Amount paid', prefixText: '$currencySymbol '),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: noteCtrl,
               style: AppFonts.inter(color: textPrimary, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Note (optional)',
-                filled: true,
-                fillColor: theme.cardSecondary,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              ),
+              decoration: sheetInputDecoration(theme, hint: 'Note (optional)'),
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -1854,7 +1984,7 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
                 onPressed: () {
                   final val = double.tryParse(amountCtrl.text.trim());
                   if (val != null && val > 0) {
-                    provider.recordDebtRepayment(debt.id, val, noteCtrl.text.trim());
+                    _runGroupAction(() => provider.recordDebtRepayment(debt.id, val, noteCtrl.text.trim()));
                   }
                   Navigator.of(ctx).pop();
                 },
@@ -1867,115 +1997,12 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
     );
   }
 
-  // 5. CREATE SPLIT GROUP BOTTOM SHEET (converted from showDialog)
+  // 5. CREATE SPLIT GROUP BOTTOM SHEET
   void _showCreateGroupSheet(BuildContext context, ExpenseProvider provider) {
     final nameCtrl = TextEditingController();
-    final membersCtrl = TextEditingController(text: 'You, ');
-
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: cardDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          12,
-          24,
-          MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(color: surfaceBorder, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('New Split Group', style: AppFonts.inter(color: textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
-                InkWell(
-                  onTap: () => Navigator.of(ctx).pop(),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(color: theme.cardSecondary, shape: BoxShape.circle),
-                    child: Icon(Icons.close_rounded, size: 18, color: textSecondary),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              controller: nameCtrl,
-              style: AppFonts.inter(color: textPrimary, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Group Name (e.g. Goa Trip, Flatmates)',
-                filled: true,
-                fillColor: theme.cardSecondary,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: membersCtrl,
-              style: AppFonts.inter(color: textPrimary, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Members separated by comma (e.g. You, Alex, Sam)',
-                filled: true,
-                fillColor: theme.cardSecondary,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.accent,
-                  foregroundColor: theme.isLight ? Colors.white : Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-                ),
-                onPressed: () {
-                  final name = nameCtrl.text.trim();
-                  final memList = membersCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-                  if (name.isNotEmpty && memList.isNotEmpty) {
-                    provider.createSplitGroup(
-                      SplitGroup(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        name: name,
-                        members: memList,
-                        createdAt: DateTime.now(),
-                      ),
-                    );
-                  }
-                  Navigator.of(ctx).pop();
-                },
-                child: Text('Create Group', style: AppFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 6. ADD GROUP EXPENSE BOTTOM SHEET (converted from showDialog)
-  void _showAddGroupExpenseSheet(BuildContext context, ExpenseProvider provider, SplitGroup group) {
-    final titleCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
-    String paidBy = group.members.first;
-    List<String> splitAmong = List<String>.from(group.members);
+    final members = <GroupMember>[];
+    PersonPick? pick;
+    var pickerKey = UniqueKey();
 
     showModalBottomSheet(
       context: context,
@@ -1986,223 +2013,173 @@ class _ExpenseTrackerScreenState extends State<ExpenseTrackerScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            24,
-            12,
-            24,
-            MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom + 20,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(color: surfaceBorder, borderRadius: BorderRadius.circular(2)),
+        builder: (ctx, setSheetState) {
+          void addPicked() {
+            final picked = pick;
+            if (picked == null) return;
+            final duplicate = members.any((m) =>
+                (picked.user != null && m.uid == picked.user!.uid) ||
+                (picked.email != null && m.email == picked.email));
+            if (!duplicate) members.add(memberFromPick(provider, picked));
+            setSheetState(() {
+              pick = null;
+              pickerKey = UniqueKey(); // Resets the picker field
+            });
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              12,
+              24,
+              MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(color: surfaceBorder, borderRadius: BorderRadius.circular(2)),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Add Group Expense', style: AppFonts.inter(color: textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
-                    InkWell(
-                      onTap: () => Navigator.of(ctx).pop(),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: theme.cardSecondary, shape: BoxShape.circle),
-                        child: Icon(Icons.close_rounded, size: 18, color: textSecondary),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('New Split Group', style: AppFonts.inter(color: textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
+                      InkWell(
+                        onTap: () => Navigator.of(ctx).pop(),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(color: theme.cardSecondary, shape: BoxShape.circle),
+                          child: Icon(Icons.close_rounded, size: 18, color: textSecondary),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: nameCtrl,
+                    style: AppFonts.inter(color: textPrimary, fontSize: 14),
+                    decoration: sheetInputDecoration(theme, hint: 'Group Name (e.g. Goa Trip, Flatmates)'),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('MEMBERS', style: AppFonts.inter(color: textMuted, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 1)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _memberChip('You', null, null),
+                      ...members.map((m) => _memberChip(
+                            m.name,
+                            m.status == MemberStatus.invited ? (m.uid != null ? 'invite' : 'email invite') : null,
+                            () => setSheetState(() => members.remove(m)),
+                          )),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: PersonPickerField(
+                          key: pickerKey,
+                          searchEnabled: provider.isCloudSync,
+                          excludeUid: provider.currentUid,
+                          onChanged: (p) => setSheetState(() => pick = p),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: theme.cardSecondary,
+                            foregroundColor: textPrimary,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          onPressed: pick == null ? null : addPicked,
+                          child: const Icon(Icons.add_rounded, size: 20),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!provider.isCloudSync) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Offline group — members are names only. Sign in to invite people by username or email.',
+                      style: AppFonts.inter(color: textMuted, fontSize: 11),
                     ),
                   ],
-                ),
-                const SizedBox(height: 18),
-                TextField(
-                  controller: titleCtrl,
-                  style: AppFonts.inter(color: textPrimary, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'Title (e.g. Dinner, Fuel)',
-                    filled: true,
-                    fillColor: theme.cardSecondary,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: AppFonts.inter(color: textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
-                  decoration: InputDecoration(
-                    prefixText: '$currencySymbol ',
-                    hintText: 'Total Amount',
-                    filled: true,
-                    fillColor: theme.cardSecondary,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text('PAID BY', style: AppFonts.inter(color: textMuted, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 1)),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: theme.cardSecondary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: DropdownButton<String>(
-                    value: paidBy,
-                    dropdownColor: cardDark,
-                    isExpanded: true,
-                    underline: const SizedBox.shrink(),
-                    items: group.members.map((m) => DropdownMenuItem(value: m, child: Text(m, style: AppFonts.inter(color: textPrimary)))).toList(),
-                    onChanged: (val) {
-                      if (val != null) setSheetState(() => paidBy = val);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text('SPLIT EQUALLY AMONG', style: AppFonts.inter(color: textMuted, fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 1)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: group.members.map((m) {
-                    final isIncluded = splitAmong.contains(m);
-                    return FilterChip(
-                      label: Text(m, style: TextStyle(color: isIncluded ? (theme.isLight ? Colors.white : Colors.black) : textSecondary, fontSize: 11)),
-                      selected: isIncluded,
-                      selectedColor: theme.isLight ? const Color(0xFF18181B) : Colors.white,
-                      backgroundColor: theme.cardSecondary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      side: BorderSide.none,
-                      onSelected: (val) {
-                        setSheetState(() {
-                          if (val) {
-                            splitAmong.add(m);
-                          } else if (splitAmong.length > 1) {
-                            splitAmong.remove(m);
-                          }
-                        });
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.accent,
+                        foregroundColor: theme.isLight ? Colors.white : Colors.black,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                      ),
+                      onPressed: () {
+                        final name = nameCtrl.text.trim();
+                        if (name.isEmpty) {
+                          _showNotificationSnackBar('Give your group a name');
+                          return;
+                        }
+                        if (pick != null) addPicked(); // Include a typed but not yet added member
+                        Navigator.of(ctx).pop();
+                        _runGroupAction(() => provider.createSplitGroup(name: name, otherMembers: List.of(members)));
                       },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: theme.accent,
-                      foregroundColor: theme.isLight ? Colors.white : Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                      child: Text('Create Group', style: AppFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
                     ),
-                    onPressed: () {
-                      final title = titleCtrl.text.trim();
-                      final amt = double.tryParse(amountCtrl.text.trim());
-                      if (title.isNotEmpty && amt != null && amt > 0 && splitAmong.isNotEmpty) {
-                        provider.addGroupExpense(
-                          GroupExpense(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            groupId: group.id,
-                            title: title,
-                            amount: amt,
-                            paidBy: paidBy,
-                            splitAmong: splitAmong,
-                            date: DateTime.now(),
-                          ),
-                        );
-                      }
-                      Navigator.of(ctx).pop();
-                    },
-                    child: Text('Record Shared Expense', style: AppFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
-  // 7. GROUP BALANCES BOTTOM SHEET
-  void _showGroupDetailsSheet(BuildContext context, ExpenseProvider provider, SplitGroup group) {
-    final balances = provider.getGroupMemberBalances(group.id);
-
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: cardDark,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          12,
-          24,
-          MediaQuery.of(ctx).padding.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(color: surfaceBorder, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('${group.name} Balances', style: AppFonts.inter(color: textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
-                InkWell(
-                  onTap: () => Navigator.of(ctx).pop(),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(color: theme.cardSecondary, shape: BoxShape.circle),
-                    child: Icon(Icons.close_rounded, size: 18, color: textSecondary),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: theme.cardSecondary, borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                children: balances.entries.map((e) {
-                  final isOwed = e.value >= 0;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(e.key, style: AppFonts.inter(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text(
-                          isOwed ? '+${formatAmount(e.value)}' : '-${formatAmount(e.value.abs())}',
-                          style: AppFonts.inter(color: isOwed ? incomeMint : expenseCoral, fontSize: 13, fontWeight: FontWeight.w700),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
+  Widget _memberChip(String name, String? tag, VoidCallback? onRemove) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(12, 6, onRemove != null ? 4 : 12, 6),
+      decoration: BoxDecoration(
+        color: theme.cardSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(name, style: AppFonts.inter(color: textPrimary, fontSize: 12)),
+          if (tag != null) ...[
+            const SizedBox(width: 4),
+            Text('· $tag', style: AppFonts.inter(color: theme.accentWarm, fontSize: 10.5)),
           ],
-        ),
+          if (onRemove != null)
+            InkWell(
+              onTap: onRemove,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.close_rounded, size: 14, color: textMuted),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
+
 
 // ═════════════════════════════════════════════════════════════════
 // ADD EXPENSE SHEET CONTENT (Image 2 & 4 style bottom sheet)

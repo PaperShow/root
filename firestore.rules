@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myEmail() {
+      return request.auth.token.email != null ? request.auth.token.email.lower() : '';
+    }
+
+    // ─── Public profiles (searchable by username / email) ──────────
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // ─── Split groups ──────────────────────────────────────────────
+    match /groups/{groupId} {
+      function isMember(data) {
+        return request.auth.uid in data.memberUids;
+      }
+      function isInvited(data) {
+        return request.auth.uid in data.invitedUids || myEmail() in data.invitedEmails;
+      }
+      function isAdmin(data) {
+        return request.auth.uid in data.admins || request.auth.uid == data.createdBy;
+      }
+      function membershipKeysOnly() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['members', 'memberUids', 'invitedUids', 'invitedEmails']);
+      }
+
+      allow read: if signedIn() && (isMember(resource.data) || isInvited(resource.data));
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.auth.uid in request.resource.data.memberUids
+        && request.auth.uid in request.resource.data.admins;
+
+      // Admins manage the group; invitees may only accept/decline their own invite.
+      allow update: if signedIn() && (
+        (isMember(resource.data) && isAdmin(resource.data))
+        || (isInvited(resource.data) && membershipKeysOnly()
+            && !(request.auth.uid in request.resource.data.invitedUids)
+            && !(myEmail() in request.resource.data.invitedEmails))
+      );
+
+      allow delete: if signedIn() && isAdmin(resource.data);
+
+      match /expenses/{expenseId} {
+        function groupData() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        // getAfter() so expenses can be written in the same batch that creates the group
+        function groupDataAfter() {
+          return getAfter(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        allow read: if signedIn() && request.auth.uid in groupData().memberUids;
+        allow create, update: if signedIn() && request.auth.uid in groupDataAfter().memberUids;
+        allow delete: if signedIn() && request.auth.uid in groupData().memberUids
+          && (resource.data.createdBy == request.auth.uid
+              || request.auth.uid in groupData().admins
+              || request.auth.uid == groupData().createdBy);
+      }
+    }
+
+    // ─── Lending / IOU records ─────────────────────────────────────
+    match /debts/{debtId} {
+      function isParticipant(data) {
+        return request.auth.uid in data.participants;
+      }
+      function isPendingRecipient(data) {
+        return data.counterpartyUid == null && data.counterpartyEmail == myEmail();
+      }
+
+      allow read: if signedIn() && (isParticipant(resource.data) || isPendingRecipient(resource.data));
+
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.auth.uid in request.resource.data.participants;
+
+      allow update: if signedIn() && (
+        // Either side can record repayments
+        (isParticipant(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['paidAmount', 'repayments', 'isSettled']))
+        // The owner can edit anything except ownership
+        || (resource.data.ownerUid == request.auth.uid
+          && request.resource.data.ownerUid == request.auth.uid)
+        // Someone who signed up with the invited email claims the record
+        || (isPendingRecipient(resource.data)
+          && request.resource.data.counterpartyUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['counterpartyUid', 'participants']))
+      );
+
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}

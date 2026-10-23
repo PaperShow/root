@@ -119,7 +119,8 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                         ),
                         const SizedBox(width: 14),
                       ],
-                      Column(
+                      Expanded(
+                        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -140,10 +141,13 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                               fontWeight: FontWeight.w500,
                               letterSpacing: 2.0,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
+                        ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 10),
                       InkWell(
                         onTap: () => _showCreateHabitSheet(context),
                         borderRadius: BorderRadius.circular(20),
