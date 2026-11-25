@@ -628,7 +628,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '🔥 ${streak}d',
+                      '${streak}d',
                       style: AppFonts.inter(
                         color: terminalGreen,
                         fontSize: 11,
@@ -818,7 +818,7 @@ class _HabitTrackerScreenState extends State<HabitTrackerScreen> {
                   // Telemetry Stats Row
                   Row(
                     children: [
-                      _buildStatBox('CURRENT STREAK', '🔥 ${streak}d', terminalGreen),
+                      _buildStatBox('CURRENT STREAK', '${streak}d', terminalGreen),
                       const SizedBox(width: 8),
                       _buildStatBox('BEST STREAK', '🏆 ${bestStreak}d', const Color(0xFFD9532F)),
                       const SizedBox(width: 8),

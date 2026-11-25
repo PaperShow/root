@@ -194,17 +194,13 @@ class _SuperAppHubScreenState extends State<SuperAppHubScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: theme.cardSecondary,
-              shape: BoxShape.circle,
-            ),
+          ClipOval(
             child: Image.asset(
-              'assets/images/root_icon_load.png',
-              width: 18,
-              height: 18,
-              fit: BoxFit.contain,
+              'assets/images/root_new.png',
+              width: 30,
+              height: 30,
+              cacheWidth: 120,
+              fit: BoxFit.cover,
               errorBuilder: (_, error, stackTrace) => Icon(
                 Icons.terminal,
                 color: theme.accent,

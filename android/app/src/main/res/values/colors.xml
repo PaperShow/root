@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background of the app icon (root_new.png) and the launch screen -->
+    <color name="root_brand_background">#19191B</color>
+</resources>

@@ -36,6 +36,8 @@ class MainActivity: FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setMinimalRecentApps()
+        // Bring the floating volume widget back if the user left it on but it was killed.
+        VolumeOverlayService.restoreIfEnabled(this)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -87,13 +89,7 @@ class MainActivity: FlutterActivity() {
                 }
                 "startVolumeOverlay" -> {
                     try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-                            result.success(false)
-                        } else {
-                            val intent = Intent(this, VolumeOverlayService::class.java)
-                            startService(intent)
-                            result.success(true)
-                        }
+                        result.success(VolumeOverlayService.start(this))
                     } catch (e: Exception) {
                         e.printStackTrace()
                         result.success(false)
@@ -101,8 +97,7 @@ class MainActivity: FlutterActivity() {
                 }
                 "stopVolumeOverlay" -> {
                     try {
-                        val intent = Intent(this, VolumeOverlayService::class.java)
-                        stopService(intent)
+                        VolumeOverlayService.stop(this)
                         result.success(true)
                     } catch (e: Exception) {
                         e.printStackTrace()

@@ -161,16 +161,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     ],
                   ),
                   child: ClipOval(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Image.asset(
-                        'assets/images/root_icon_load.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, error, stackTrace) => Icon(
-                          Icons.terminal_rounded,
-                          color: theme.textPrimary,
-                          size: 32,
-                        ),
+                    child: Image.asset(
+                      'assets/images/root_new.png',
+                      cacheWidth: 288,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, error, stackTrace) => Icon(
+                        Icons.terminal_rounded,
+                        color: theme.textPrimary,
+                        size: 32,
                       ),
                     ),
                   ),

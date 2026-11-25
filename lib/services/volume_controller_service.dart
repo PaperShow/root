@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class VolumeStreamInfo {
   final int current;
@@ -72,6 +73,14 @@ class VolumeControllerService {
   }
 
   static Future<bool> startVolumeOverlay() async {
+    // The widget runs as a foreground service with an ongoing notification.
+    // On Android 13+ that notification needs permission to be shown; the
+    // widget still works if the user declines.
+    try {
+      if (await Permission.notification.isDenied) {
+        await Permission.notification.request();
+      }
+    } catch (_) {}
     try {
       final bool? result = await _channel.invokeMethod<bool>('startVolumeOverlay');
       return result ?? false;
