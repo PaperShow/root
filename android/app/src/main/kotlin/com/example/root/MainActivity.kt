@@ -148,6 +148,9 @@ class MainActivity: FlutterActivity() {
     override fun onResume() {
         super.onResume()
         setMinimalRecentApps()
+        // This is the home screen, so every Home press lands here: revive the
+        // volume widget right away if the system killed it in the background.
+        VolumeOverlayService.restoreIfEnabled(this)
     }
 
     private fun setMinimalRecentApps() {

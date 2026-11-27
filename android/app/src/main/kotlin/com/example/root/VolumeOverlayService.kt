@@ -1,6 +1,7 @@
 package com.example.root
 
 import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -20,6 +21,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
@@ -54,6 +56,8 @@ class VolumeOverlayService : Service() {
         private const val CHANNEL_ID = "volume_widget"
         private const val NOTIFICATION_ID = 4107
         const val ACTION_STOP = "com.example.root.action.STOP_VOLUME_WIDGET"
+        const val ACTION_WATCHDOG = "com.example.root.action.VOLUME_WIDGET_WATCHDOG"
+        private const val WATCHDOG_INTERVAL_MS = 15 * 60 * 1000L
 
         private const val AUTO_COLLAPSE_MS = 4000L
 
@@ -72,13 +76,47 @@ class VolumeOverlayService : Service() {
             } else {
                 context.startService(intent)
             }
+            scheduleWatchdog(context)
             return true
         }
 
         /** Turn the widget off and remember that choice. */
         fun stop(context: Context) {
             prefs(context).edit().putBoolean(KEY_ENABLED, false).apply()
+            cancelWatchdog(context)
             context.stopService(Intent(context, VolumeOverlayService::class.java))
+        }
+
+        private fun watchdogIntent(context: Context): PendingIntent =
+            PendingIntent.getBroadcast(
+                context, 2,
+                Intent(context, VolumeOverlayBootReceiver::class.java).setAction(ACTION_WATCHDOG),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+        /**
+         * Periodic check that revives the widget if the system killed it while
+         * the app was in the background. Inexact, so it costs almost no battery.
+         */
+        private fun scheduleWatchdog(context: Context) {
+            try {
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                am.setInexactRepeating(
+                    AlarmManager.ELAPSED_REALTIME,
+                    SystemClock.elapsedRealtime() + WATCHDOG_INTERVAL_MS,
+                    WATCHDOG_INTERVAL_MS,
+                    watchdogIntent(context)
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        private fun cancelWatchdog(context: Context) {
+            try {
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                am.cancel(watchdogIntent(context))
+            } catch (_: Exception) {}
         }
 
         /** Bring the widget back if the user left it on but it isn't running. */
@@ -136,35 +174,51 @@ class VolumeOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // Must happen first: a service started with startForegroundService()
-        // that stops without calling startForeground() crashes the app.
-        goForeground()
 
         if (!Settings.canDrawOverlays(this)) {
             prefs(this).edit().putBoolean(KEY_ENABLED, false).apply()
+            // A service started with startForegroundService() must call
+            // startForeground() even if it stops right away, or the app crashes.
+            goForeground()
             stopSelf()
             return
         }
         windowManager = getSystemService(WINDOW_SERVICE) as? WindowManager
         audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
-        if (windowManager == null || audioManager == null) {
-            stopSelf()
-            return
-        }
 
+        // Draw the overlay BEFORE going foreground. When Android restarts this
+        // service in the background (after killing it), Android 15+ only lets an
+        // app become a foreground service from the background if it already has
+        // a visible overlay window. Going foreground first threw, crashed the
+        // restart, and the widget stayed gone until the app was opened again.
+        ensureOverlay()
+        goForeground()
+
+        if (rootView == null) {
+            stopSelf()
+        }
+    }
+
+    /** Adds the overlay window and volume listener if they aren't already there. */
+    private fun ensureOverlay() {
+        if (rootView != null) return
+        if (windowManager == null || audioManager == null) return
         try {
             createOverlay()
-            val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(volumeReceiver, filter, Context.RECEIVER_EXPORTED)
-            } else {
-                registerReceiver(volumeReceiver, filter)
+            if (!receiverRegistered) {
+                val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(volumeReceiver, filter, Context.RECEIVER_EXPORTED)
+                } else {
+                    registerReceiver(volumeReceiver, filter)
+                }
+                receiverRegistered = true
             }
-            receiverRegistered = true
             isRunning = true
         } catch (e: Throwable) {
             e.printStackTrace()
-            stopSelf()
+            rootView?.let { try { windowManager?.removeView(it) } catch (_: Exception) {} }
+            rootView = null
         }
     }
 
@@ -173,7 +227,9 @@ class VolumeOverlayService : Service() {
             stop(this)
             return START_NOT_STICKY
         }
-        // Restarted by the system after being killed: re-assert foreground.
+        // Started again (by the app, the watchdog, or the system after a kill):
+        // make sure the bubble is on screen and we are still foreground.
+        if (Settings.canDrawOverlays(this)) ensureOverlay()
         goForeground()
         return START_STICKY
     }
@@ -192,7 +248,19 @@ class VolumeOverlayService : Service() {
 
     // ── Foreground notification ─────────────────────────────────────────
 
+    /**
+     * Never let this throw: an uncaught failure here crashes the service, and after
+     * repeated crashes Android stops restarting it at all.
+     */
     private fun goForeground() {
+        try {
+            startForegroundInternal()
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun startForegroundInternal() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             nm.getNotificationChannel(CHANNEL_ID) == null
